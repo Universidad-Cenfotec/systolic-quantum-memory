@@ -27,15 +27,6 @@ from src.functions.qubit_mapper import QubitMapper
 
 
 class SwapCompiler:
-    """
-    Senior-Level Quantum Compiler for Systolic Quantum Memory (SQM).
-    
-    Manages:
-    - Logical to physical qubit mapping
-    - Memory register allocation (Single copy per register)
-    - Work phase coordination (SWAP operations)
-    - Noisy simulation with FakeKyiv backend
-    """
 
     # Constant: SWAP operation duration in nanoseconds (NISQ-level)
     SWAP_TIME_NS = 1350
@@ -49,24 +40,7 @@ class SwapCompiler:
         backend_name: str = "FakeKyiv",
         initial_state: int = 0,
     ):
-        """
-        Initialize the Swap Compiler.
-
-        Parameters
-        ----------
-        R : int
-            Number of logical memory registers (e.g., 4).
-        n : int
-            Qubit width per register (quantum word size).
-        c_max : int
-            Maximum active desgaste threshold (gate cost).
-        t_max_ns : float
-            Maximum passive desgaste threshold (idle time in nanoseconds).
-        backend_name : str, optional
-            Name of fake backend for compilation. Default is "FakeKyiv".
-        initial_state : int, optional
-            Initial quantum state for fidelity calculation: 0 for |0⟩ state, 1 for |1⟩ state. Default is 0.
-        """
+       
         self.R = R
         self.n = n
         self.c_max = c_max
@@ -91,7 +65,7 @@ class SwapCompiler:
         # T1 and T2 times for FakeKyiv (typical NISQ parameters)
         t1_ns = 150_000  # 150 μs
         t2_ns = 100_000  # 100 μs
-        self.time_idle_ns = 70  # One IDLE unit = 70 ns (equivalent to one gate cycle)
+        self.time_idle_ns = 700  # One IDLE unit = 7000 ns (equivalent to one gate cycle)
         
         # Create thermal relaxation error for the idle period
         idle_error = thermal_relaxation_error(t1_ns, t2_ns, self.time_idle_ns)
@@ -155,19 +129,7 @@ class SwapCompiler:
     # during compile_workload(). Keeping for backwards compatibility if needed.
 
     def _get_initial_layout(self, qc: QuantumCircuit) -> List[int]:
-        """
-        Build the initial_layout for transpilation based on logical_to_physical_map.
 
-        Parameters
-        ----------
-        qc : QuantumCircuit
-            The quantum circuit whose qubits need to be mapped.
-
-        Returns
-        -------
-        List[int]
-            Mapping of circuit qubit indices to physical qubits.
-        """
         initial_layout = []
         for qubit in qc.qubits:
             if qubit in self.logical_to_physical_map:
@@ -181,24 +143,6 @@ class SwapCompiler:
     # ──────────────────────────────────────────────────────────────
 
     def compile_workload(self, workload: List[str]) -> QuantumCircuit:
-        """
-        Core compilation engine: Process workload instructions and generate circuit.
-
-        Workload format:
-        - "IDLE_X": Idle X nanoseconds
-        - "READ_ij": Read from logical register i (binary j = lower bits, i = upper bits)
-        - "WRITE_ij": Write to logical register i (binary j format)
-
-        Parameters
-        ----------
-        workload : List[str]
-            List of instruction strings.
-
-        Returns
-        -------
-        QuantumCircuit
-            Compiled quantum circuit ready for simulation/execution.
-        """
 
         # ──────────────────────────────────────────────────────────
         # SEED INITIALIZATION - For reproducibility
@@ -366,25 +310,7 @@ class SwapCompiler:
     # ──────────────────────────────────────────────────────────────
 
     def run_simulation(self, circuit: QuantumCircuit, shots: int = 1024) -> Dict[str, Any]:
-        """
-        Transpile circuit and simulate with realistic noise (FakeKyiv).
 
-        Parameters
-        ----------
-        circuit : QuantumCircuit
-            Compiled quantum circuit.
-        shots : int, optional
-            Number of simulation shots. Default is 1024.
-
-        Returns
-        -------
-        Dict[str, Any]
-            Dictionary with:
-            - 'fidelity': Overall fidelity (probability of correct result, float)
-            - 'counts': Raw measurement counts (dict)
-            - 'total_shots': Total number of shots (int)
-            - 'error': Error message if simulation failed (str, optional)
-        """
 
         # ──────────────────────────────────────────────────────────
         # SEED SETUP FOR REPRODUCIBILITY
@@ -399,28 +325,24 @@ class SwapCompiler:
             qc_measured = circuit.copy()
             
             # ALWAYS add a specific register for final fidelity
-            cr_final = ClassicalRegister(self.n, name="final_meas")
+            # CRITICAL: Measure ALL n*R qubits (all memory registers) for correct fidelity
+            cr_final = ClassicalRegister(self.n * self.R, name="final_meas")
             qc_measured.add_register(cr_final)
 
-            # Determine target register based on architecture
-            logical_addr = 0
-            if hasattr(self, 'location_map'): # SQTM Logic
-                if self.location_map[logical_addr] == "O":  # type: ignore
-                    target_reg = self._built_registers[f"mem_orig_{logical_addr}"]
-                else:
-                    target_reg = self._built_registers[f"mem_backup_{logical_addr}"]
-            else: # SWAP only Logic
-                target_reg = self._built_registers[f"mem_{logical_addr}"]
-
-            # Measure ONLY the target register into cr_final
-            for i in range(self.n):
-                qc_measured.measure(target_reg[i], cr_final[i])
+            # Measure ALL memory registers into cr_final
+            classical_bit_index = 0
+            for logical_addr in range(self.R):
+                # Each memory register stores n qubits
+                memory_reg = self._built_registers[f"mem_{logical_addr}"]
+                for i in range(self.n):
+                    qc_measured.measure(memory_reg[i], cr_final[classical_bit_index])
+                    classical_bit_index += 1
 
             print("[Transpile] Translating to hardware topology with seed=42...")
             
             # Extract initial layout before transpilation
             initial_layout = self._get_initial_layout(qc_measured)
-            initial_layout = self._get_initial_layout(qc_measured)
+
             print(qc_measured.draw(output="text"))
             print("[Noise Model] Extracting noise characteristics...")
             
@@ -447,12 +369,15 @@ class SwapCompiler:
             counts = result.get_counts()
             total_counts = sum(counts.values())
             
-            # Extract results: The last added classical register is always the first block (leftmost) in Qiskit output
+            # Extract results: Compare ALL n*R measurement bits against target state
             fidelity_count = 0
-            target_state = ('1' * self.n) if self.initial_state == 1 else ('0' * self.n)
+            target_state_bits = self.n * self.R
+            target_state = ('1' * target_state_bits) if self.initial_state == 1 else ('0' * target_state_bits)
+            
             for outcome, count in counts.items():
-                dest_bits = outcome.split()[0]  
-                if dest_bits == target_state:
+                # The outcome string contains all measured bits (no spaces since single register)
+                measured_bits = outcome.strip()
+                if measured_bits == target_state:
                     fidelity_count += count
             
             fidelity = fidelity_count / total_counts if total_counts > 0 else 0.0
@@ -464,7 +389,7 @@ class SwapCompiler:
             print(f"  Size: {qc_transpiled.size()}")
             
             state_label = "|1...1>" if self.initial_state == 1 else "|0...0>"
-            print(f"  Fidelity ({state_label} success): {fidelity:.4f}")
+            print(f"  Fidelity ({state_label} success for all {self.n * self.R} memory qubits): {fidelity:.4f}")
             
             # Show top outcomes
             if counts:

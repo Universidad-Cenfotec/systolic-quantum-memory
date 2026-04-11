@@ -12,14 +12,7 @@ from qiskit.circuit import QuantumRegister, ClassicalRegister, Clbit
 class SystolicTeleportation:
 
     def __init__(self, name: str = "systolic_teleportation") -> None:
-        """
-        Initialize the Systolic Teleportation module.
 
-        Parameters
-        ----------
-        name : str, optional
-            Name identifier for this teleportation bus, by default "systolic_teleportation"
-        """
         self.name = name
         # Cache de registros ancilla y clásicos por par lógico (source_name, dest_name)
         self._ancilla_cache: Dict[Tuple[str, str], QuantumRegister] = {}
@@ -89,7 +82,8 @@ class SystolicTeleportation:
             # ────────────────────────────────────────────────────────
             # 2a. BELL CHANNEL GENERATION (between link_q and dest_q)
             # ────────────────────────────────────────────────────────
-            
+            qc.reset(link_q)
+            qc.reset(dest_q)
             qc.h(link_q)
             qc.cx(link_q, dest_q)
             
@@ -124,8 +118,6 @@ class SystolicTeleportation:
             # 2e. ACTIVE RESET (Clean source and ancilla, NOT destination)
             # ────────────────────────────────────────────────────────
             
-            qc.reset(source_q)
-            qc.reset(link_q)
         
         return qc
 

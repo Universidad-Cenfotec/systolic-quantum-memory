@@ -7,6 +7,9 @@ import sys
 import os
 import random
 import numpy as np
+import matplotlib.pyplot as plt
+import csv
+from datetime import datetime
 from typing import List, Tuple, Dict, Any, Optional
 
 # Ensure project root is in path
@@ -22,21 +25,7 @@ from src.simulator.swap_simulator import SwapCompiler
 
 def run_sqtm_compiler(R: int, n: int, c_max: int, t_max_ns: float, 
                      workload: List[str], shots: int, initial_state: int = 0) -> Optional[Dict[str, Any]]:
-    """
-    Execute SQTM Compiler (Dual-register memory with quantum teleportation).
-    
-    Args:
-        R: Number of memory registers
-        n: Qubits per register
-        c_max: Gate cost threshold
-        t_max_ns: Time threshold in nanoseconds
-        workload: List of instructions (READ/WRITE)
-        shots: Number of simulation shots
-        initial_state: Initial quantum state for fidelity (0 for |0⟩, 1 for |1⟩)
-    
-    Returns:
-        Dictionary with simulation results
-    """
+
     # ──────────────────────────────────────────────────────────
     # SEED INITIALIZATION - For global reproducibility
     # ──────────────────────────────────────────────────────────
@@ -95,21 +84,7 @@ def run_sqtm_compiler(R: int, n: int, c_max: int, t_max_ns: float,
 
 def run_swap_compiler(R: int, n: int, c_max: int, t_max_ns: float,
                      workload: List[str], shots: int, initial_state: int = 0) -> Optional[Dict[str, Any]]:
-    """
-    Execute SWAP Compiler (Single-register memory, baseline comparison).
-    
-    Args:
-        R: Number of memory registers
-        n: Qubits per register
-        c_max: Gate cost threshold
-        t_max_ns: Time threshold in nanoseconds
-        workload: List of instructions (READ/WRITE)
-        shots: Number of simulation shots
-        initial_state: Initial quantum state for fidelity (0 for |0⟩, 1 for |1⟩)
-    
-    Returns:
-        Dictionary with simulation results
-    """
+
     # ──────────────────────────────────────────────────────────
     # SEED INITIALIZATION - For global reproducibility
     # ──────────────────────────────────────────────────────────
@@ -172,22 +147,7 @@ def run_swap_compiler(R: int, n: int, c_max: int, t_max_ns: float,
 
 def analyze_workload(R: int, n: int, c_max: int, t_max_ns: float,
                     workload_name: str, workload: List[str], shots: int, initial_state: int = 0) -> Optional[Dict[str, Any]]:
-    """
-    Run both compilers on a single workload and perform comparative analysis.
-    
-    Args:
-        R: Number of memory registers
-        n: Qubits per register
-        c_max: Gate cost threshold
-        t_max_ns: Time threshold in nanoseconds
-        workload_name: Name of the workload
-        workload: List of instructions
-        shots: Number of simulation shots
-        initial_state: Initial quantum state for fidelity (0 for |0⟩, 1 for |1⟩)
-    
-    Returns:
-        Dictionary with comparative results
-    """
+
     print("\n" + "█" * 70)
     print("█" + " " * 68 + "█")
     state_label = "|1⟩" if initial_state == 1 else "|0⟩"
@@ -254,18 +214,6 @@ def analyze_workload(R: int, n: int, c_max: int, t_max_ns: float,
 
 def run_full_comparison(R: int, n: int, c_max: int, t_max_ns: float,
                        shots: int, workloads: List[Tuple[str, List[str]]], initial_state: int = 0) -> None:
-    """
-    Execute full comparative analysis across all workloads.
-    
-    Args:
-        R: Number of memory registers
-        n: Qubits per register
-        c_max: Gate cost threshold
-        t_max_ns: Time threshold in nanoseconds
-        shots: Number of simulation shots
-        workloads: List of (name, instructions) tuples
-        initial_state: Initial quantum state for fidelity (0 for |0⟩, 1 for |1⟩)
-    """
     
     # Summary tracking
     results = []
@@ -324,6 +272,101 @@ def run_full_comparison(R: int, n: int, c_max: int, t_max_ns: float,
         print(f"  SQTM:  {avg_sqtm_fidelity:.4f} ({avg_sqtm_fidelity*100:.2f}%)")
         print(f"  SWAP:  {avg_swap_fidelity:.4f} ({avg_swap_fidelity*100:.2f}%)")
         print(f"  Δ:     {avg_difference:+.4f}")
+
+        # ═════════════════════════════════════════════════════════════════════════
+        # GENERATE GRAPH AND SAVE CSV
+        # ═════════════════════════════════════════════════════════════════════════
+        
+        print("\n" + "=" * 70)
+        print("GENERATING GRAPH AND SAVING RESULTS")
+        print("=" * 70)
+        
+        # Prepare data for graph and CSV
+        workload_names = []
+        sqtm_fidelities = []
+        swap_fidelities = []
+        csv_data = []
+        
+        for i, result in enumerate(results, 1):
+            workload_names.append(result['workload_name'])
+            sqtm_fidelities.append(result['comparison']['sqtm_fidelity'])
+            swap_fidelities.append(result['comparison']['swap_fidelity'])
+            
+            csv_data.append({
+                'Run': i,
+                'Workload': result['workload_name'],
+                'SQTM_Fidelity': result['comparison']['sqtm_fidelity'],
+                'SWAP_Fidelity': result['comparison']['swap_fidelity'],
+                'Difference': result['comparison']['difference'],
+                'Percent_Diff': result['comparison']['percent_diff'],
+                'SQTM_Qubits': result['comparison']['sqtm_qubits'],
+                'SWAP_Qubits': result['comparison']['swap_qubits'],
+            })
+        
+        # Generate Graph
+        fig, ax = plt.subplots(figsize=(12, 7))
+        x_pos = np.arange(len(workload_names))
+        width = 0.35
+        
+        bars1 = ax.bar(x_pos - width/2, sqtm_fidelities, width, label='SQTM', color='#2E86AB', alpha=0.8)
+        bars2 = ax.bar(x_pos + width/2, swap_fidelities, width, label='SWAP', color='#A23B72', alpha=0.8)
+        
+        ax.set_xlabel('Workload', fontsize=12, fontweight='bold')
+        ax.set_ylabel('Fidelity', fontsize=12, fontweight='bold')
+        ax.set_title('Comparative Analysis: SQTM vs SWAP Compiler Fidelity', fontsize=14, fontweight='bold')
+        ax.set_xticks(x_pos)
+        ax.set_xticklabels(workload_names, rotation=45, ha='right')
+        ax.legend(fontsize=11)
+        ax.grid(axis='y', alpha=0.3, linestyle='--')
+        ax.set_ylim((0, 1.05))
+        
+        # Add value labels on bars
+        for bars in [bars1, bars2]:
+            for bar in bars:
+                height = bar.get_height()
+                ax.text(bar.get_x() + bar.get_width()/2., height,
+                       f'{height:.3f}',
+                       ha='center', va='bottom', fontsize=9)
+        
+        plt.tight_layout()
+        
+        # Save graph
+        results_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'results')
+        os.makedirs(results_dir, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        graph_path = os.path.join(results_dir, f'comparison_graph_{timestamp}.png')
+        plt.savefig(graph_path, dpi=300, bbox_inches='tight')
+        print(f"✓ Graph saved: {graph_path}")
+        plt.close()
+        
+        # Save CSV
+        data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data')
+        os.makedirs(data_dir, exist_ok=True)
+        csv_path = os.path.join(data_dir, f'comparison_results_{timestamp}.csv')
+        
+        with open(csv_path, 'w', newline='') as csvfile:
+            fieldnames = ['Run', 'Workload', 'SQTM_Fidelity', 'SWAP_Fidelity', 
+                         'Difference', 'Percent_Diff', 'SQTM_Qubits', 'SWAP_Qubits']
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(csv_data)
+        
+        print(f"✓ CSV saved: {csv_path}")
+        
+        # Add summary row to CSV
+        summary_path = os.path.join(data_dir, f'comparison_summary_{timestamp}.csv')
+        with open(summary_path, 'w', newline='') as csvfile:
+            writer = csv.writer(csvfile)
+            writer.writerow(['Metric', 'Value'])
+            writer.writerow(['Total Workloads', len(results)])
+            writer.writerow(['SQTM Better', sqtm_better_count])
+            writer.writerow(['SWAP Better', swap_better_count])
+            writer.writerow(['Equal', equal_count])
+            writer.writerow(['Avg SQTM Fidelity', f'{avg_sqtm_fidelity:.4f}'])
+            writer.writerow(['Avg SWAP Fidelity', f'{avg_swap_fidelity:.4f}'])
+            writer.writerow(['Avg Difference', f'{avg_difference:+.4f}'])
+        
+        print(f"✓ Summary CSV saved: {summary_path}")
 
         print("\n" + "=" * 70)
         print("✓ COMPARATIVE ANALYSIS COMPLETE")

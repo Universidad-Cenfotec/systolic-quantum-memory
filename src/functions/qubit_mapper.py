@@ -10,9 +10,7 @@ import networkx as nx
 
 
 class QubitMapper:
-    """
-    Intelligent qubit allocation respecting hardware coupling topology.
-    """
+
 
     def __init__(self, backend):
         """
@@ -366,49 +364,7 @@ class QubitMapper:
         self,
         chain_config: List[Tuple[str, int]]
     ) -> Dict[str, List[int]]:
-        """
-        Allocate multiple disjoint linear chains of qubits.
-        
-        This is a generalized, scalable version of _get_physical_chains() from cmax_validator.
-        It creates linear chains where each register occupies a contiguous segment.
-        
-        Topology (scalable):
-            OpReg → Mem_0 → Ancilla_0 → Mem_Back_0 → Mem_1 → Ancilla_1 → Mem_Back_1 → ...
-        
-        Example configuration:
-            chain_config = [
-                ("opreg", 1),
-                ("mem_0", 2),
-                ("ancilla_0", 1),
-                ("mem_back_0", 2),
-                ("mem_1", 2),
-                ("ancilla_1", 1),
-                ("mem_back_1", 2),
-            ]
-        
-        This creates a single chain of 12 qubits where:
-        - First qubit: OpReg
-        - Next 2: Mem_0
-        - Next 1: Ancilla_0
-        - Next 2: Mem_Back_0
-        - And so on...
-        
-        Parameters
-        ----------
-        chain_config : List[Tuple[str, int]]
-            List of (register_id, size) pairs defining the chain order.
-            The total chain length is sum of all sizes.
-        
-        Returns
-        -------
-        Dict[str, List[int]]
-            Mapping {register_id: [physical_qubits]} where qubits form a connected linear chain.
-        
-        Raises
-        ------
-        RuntimeError
-            If a chain of the required total length cannot be found.
-        """
+
         result = {}
         total_chain_length = sum(size for _, size in chain_config)
 
@@ -449,41 +405,7 @@ class QubitMapper:
         chain_template: List[Tuple[str, int]],
         base_chain_length: Optional[int] = None
     ) -> Dict[str, List[int]]:
-        """
-        Allocate multiple identical disjoint chains (for multi-memory systems).
-        
-        Useful when you have multiple independent memory blocks, each with the same structure.
-        
-        Example:
-            For 2 memory blocks with structure: Mem → Ancilla → Mem_Back
-            
-            chain_template = [("mem", 2), ("ancilla", 1), ("mem_back", 2)]
-            allocate_multi_chain_topology(num_chains=2, chain_template=chain_template)
-            
-            This creates:
-            - Chain 0: mem_0, ancilla_0, mem_back_0
-            - Chain 1: mem_1, ancilla_1, mem_back_1
-        
-        Parameters
-        ----------
-        num_chains : int
-            Number of independent chains to allocate.
-        chain_template : List[Tuple[str, int]]
-            Template for each chain, with register base names (without index).
-        base_chain_length : Optional[int]
-            If provided, adds this many qubits at the beginning of each chain.
-            (E.g., for a shared OpReg hub)
-        
-        Returns
-        -------
-        Dict[str, List[int]]
-            Mapping of all allocated registers (with indices in names).
-        
-        Raises
-        ------
-        RuntimeError
-            If required chains cannot be found.
-        """
+
         result = {}
         
         print(f"\n[QubitMapper] Allocating {num_chains} independent chains:")
