@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 
 from qiskit import QuantumCircuit, QuantumRegister, ClassicalRegister, transpile
 from qiskit.circuit import Instruction
-from qiskit_ibm_runtime.fake_provider import FakeKyiv, FakeBrisbane
+from qiskit_ibm_runtime.fake_provider import FakeKyiv
 from qiskit_aer import AerSimulator
 from qiskit_aer.noise import NoiseModel, thermal_relaxation_error
 
@@ -58,24 +58,27 @@ class SQTMCompiler:
         # ──────────────────────────────────────────────────────────
         # 1b. Create thermal relaxation error linked to 'id' gate
         # ──────────────────────────────────────────────────────────
-        # T1 and T2 times for FakeKyiv (typical NISQ parameters)
-        t1_ns = 150_000  # 150 μs
-        t2_ns = 100_000  # 100 μs
-        self.time_idle_ns = 700  # One IDLE unit = 7000 ns (equivalent to one gate cycle)
+        # T1 and T2 times (worst-case 10th percentile parameters)
+        t1_ns = 149_149   # 149.149 μs (10th percentile)
+        t2_ns = 38_194    # 38.194 μs (10th percentile - critical limiting time)
+        self.time_idle_ns = 7000  # One IDLE unit = 700 ns (identity gate duration)
         
-        # Create thermal relaxation error for the idle period
+        # Create and apply thermal relaxation error ONLY to ID gates (passive decay)
         idle_error = thermal_relaxation_error(t1_ns, t2_ns, self.time_idle_ns)
-        
-        # Inject thermal relaxation to 'id' gate (applied during IDLE periods)
-        # NOTE: Apply to a limited set of qubits to avoid serialization issues with Aer backend
         num_physical_qubits = self.backend.configuration().n_qubits
-        max_qubits_for_error = min(10, num_physical_qubits)  # Limit to first 10 qubits
-        for q in range(max_qubits_for_error):
+        for q in range(num_physical_qubits):
             self.noise_model.add_quantum_error(idle_error, 'id', [q], warnings=False)
+
+        backend_noise = NoiseModel.from_backend(self.backend)
+        for gate in ['x', 'z', 'h', 'cx', 'measure', 'reset']:
+            if gate in backend_noise._default_quantum_errors:
+                self.noise_model.add_all_qubit_quantum_error(
+                    backend_noise._default_quantum_errors[gate], gate
+                )
         
-        print(f"[SQTM Compiler] Thermal relaxation configured: T1={t1_ns/1000:.1f}μs, T2={t2_ns/1000:.1f}μs")
-        print(f"[SQTM Compiler] Idle period per unit: {self.time_idle_ns} ns")
-        print(f"[SQTM Compiler] Applied thermal decay to 'id' gate on first {max_qubits_for_error} qubits")
+        #print(f"[SQTM Compiler] Thermal relaxation configured: T1={t1_ns/1000:.1f}μs, T2={t2_ns/1000:.1f}μs")
+        #print(f"[SQTM Compiler] Idle period per unit: {self.time_idle_ns} ns")
+        #print(f"[SQTM Compiler] Applied thermal decay to 'id' gate on first {num_physical_qubits} qubits")
 
         # Initialize QubitMapper for intelligent qubit allocation
         self.qubit_mapper = QubitMapper(self.backend)
@@ -106,9 +109,7 @@ class SQTMCompiler:
 
         # ──────────────────────────────────────────────────────────
         # 2b. Teleportation Ancilla Registers (1 per Original-Backup pair)
-        # Canal Bell para el protocolo de tele-refresco.
-        # Pre-asignados aquí para que reciban hardware físico en la cadena lineal
-        # y NO se creen dinámicamente en tiempo de ejecución.
+        # Pre-allocated Bell channels for quantum teleportation refresh protocol
         # ──────────────────────────────────────────────────────────
 
         self.tele_ancilla_registers: List[QuantumRegister] = [
@@ -129,7 +130,6 @@ class SQTMCompiler:
         # ──────────────────────────────────────────────────────────
 
         self.qpc = QPC(logical_size=R, c_max=c_max, t_max=t_max_ns)
-        # La ubicación (ORIGINAL / BACKUP) por dirección lógica la gestiona el QPC
 
         # Current counters for active tracking (per register)
         self.current_c: Dict[int, int] = {i: 0 for i in range(R)}
@@ -192,24 +192,6 @@ class SQTMCompiler:
     # ──────────────────────────────────────────────────────────────
 
     def compile_workload(self, workload: List[str]) -> QuantumCircuit:
-        """
-        Core compilation engine: Process workload instructions and generate circuit.
-
-        Workload format:
-        - "IDLE_X": Idle X nanoseconds
-        - "READ_ij": Read from logical register i (binary j = lower bits, i = upper bits)
-        - "WRITE_ij": Write to logical register i (binary j format)
-
-        Parameters
-        ----------
-        workload : List[str]
-            List of instruction strings.
-
-        Returns
-        -------
-        QuantumCircuit
-            Compiled quantum circuit ready for simulation/execution.
-        """
 
         # ──────────────────────────────────────────────────────────
         # SEED INITIALIZATION - For reproducibility
@@ -243,18 +225,10 @@ class SQTMCompiler:
         qc.add_register(qr_opreg)
         self._built_registers["opreg"] = qr_opreg
 
-        # ──────────────────────────────────────────────────────────
-        # CHAIN TOPOLOGY ALLOCATION (WITH ANCILLAS)
-        # ──────────────────────────────────────────────────────────
-        # Structure: OpReg — Mem_Orig_i — Mem_Backup_i — TeleAncilla_i — ...
-        # This ensures direct connectivity without routing SWAPs with optimization_level=0
-        # ──────────────────────────────────────────────────────────
+        # Chain Topology: OpReg — (Mem_Orig_i — Mem_Backup_i — TeleAncilla_i) x R
+        # Linear structure ensures direct connectivity without routing SWAPs
         
         print("\n[Compilation] Allocating chain topology...")
-        print(f"[Compilation] Structure: OpReg — Mem_Orig_i — Mem_Backup_i — TeleAncilla_i — ...")
-        
-        # Cadena: OpReg + (Orig + Backup + TeleAncilla) x R
-        # TeleAncilla es el canal Bell usado en el tele-refresco.
         chain_config = [("opreg", self.n)]
         for i in range(self.R):
             chain_config.append((f"mem_orig_{i}", self.n))
@@ -273,7 +247,6 @@ class SQTMCompiler:
             if reg_id == "opreg":
                 qr = self._built_registers["opreg"]
             else:
-                # mem_orig_*, ancilla_*, mem_backup_*, tele_ancilla_*
                 qr = self._built_registers[reg_id]
             
             for local_idx, physical_qubit in enumerate(physical_qubits):
@@ -307,18 +280,18 @@ class SQTMCompiler:
                             qc.x(qubit)
             
             qc.barrier()
-            print("[Compilation] Initial state |1...1⟩ prepared for all qubits")
+            #print("[Compilation] Initial state |1...1⟩ prepared for all qubits")
         else:
             print("\n[Compilation] Using default initial state |0...0⟩ (no X gates applied)")
 
-        print(f"\n[Compilation] Starting workload processing: {len(workload)} instructions")
+        #print(f"\n[Compilation] Starting workload processing: {len(workload)} instructions")
 
         # ──────────────────────────────────────────────────────────
         # Phase 1: Process workload instructions
         # ──────────────────────────────────────────────────────────
 
         for instruction in workload:
-            print(f"  [Instruction] {instruction}")
+            #print(f"  [Instruction] {instruction}")
 
             if instruction.startswith("IDLE_"):
                 # IDLE instruction: Apply thermal relaxation via native 'id' gate
@@ -340,6 +313,8 @@ class SQTMCompiler:
                 # Increment time for all active registers
                 for i in range(self.R):
                     self.current_t[i] += time_ns
+
+                qc.barrier()  # Prevent inter-SWAP optimization
                 for logical_addr in range(self.R):    
                     self._check_and_apply_tele_refresh(qc, logical_addr, gate_cost=0,
                     time_dt=self.time_idle_ns)
@@ -367,6 +342,7 @@ class SQTMCompiler:
                 # Apply SWAP between source and OpReg
                 qc = self.work_phase.apply_swap(qc, source_reg, qr_opreg)
 
+                qc.barrier()  # Prevent inter-SWAP optimization
                 # Check if odometer threshold exceeded
                 self._check_and_apply_tele_refresh(qc, logical_addr, gate_cost=1, time_dt=self.SWAP_TIME_NS)
 
@@ -393,13 +369,13 @@ class SQTMCompiler:
                 # Apply SWAP between OpReg and destination
                 qc = self.work_phase.apply_swap(qc, qr_opreg, dest_reg)
 
-
+                qc.barrier()  # Prevent inter-SWAP optimization
                 # Check if odometer threshold exceeded
                 self._check_and_apply_tele_refresh(qc, logical_addr, gate_cost=1, time_dt=self.SWAP_TIME_NS)
 
             else:
                 print(f"  [WARNING] Unknown instruction: {instruction}")
-            qc.barrier()  # Prevent inter-SWAP optimization
+              # Prevent inter-SWAP optimization
             #print(qc.draw(output="text"))   
 
         print(f"[Compilation] Workload processing complete")
@@ -440,7 +416,7 @@ class SQTMCompiler:
         if requires_refresh:
             print(f"    [Odometer] Threshold exceeded for Mem[{logical_addr}] -> Tele-refreshing")
 
-            # Determinar registros fuente/destino según la ubicación actual del QPC
+            # Determine source/destination registers based on current QPC location
             current_location = self.qpc.get_location(logical_addr)
             if current_location == MemLocation.ORIGINAL:
                 source_reg = self._built_registers[f"mem_orig_{logical_addr}"]
@@ -449,18 +425,18 @@ class SQTMCompiler:
                 source_reg = self._built_registers[f"mem_backup_{logical_addr}"]
                 dest_reg = self._built_registers[f"mem_orig_{logical_addr}"]
 
-            # Recuperar la ancilla de teleportación pre-asignada para este par lógico
+            # Retrieve pre-allocated teleportation ancilla for this logical pair
             tele_ancilla = self._built_registers[f"tele_ancilla_{logical_addr}"]
             cr_bell = self.tele_cr_bell_registers[logical_addr]
 
-            # Apply quantum teleportation usando la ancilla pre-asignada
+            # Apply quantum teleportation using pre-allocated ancilla
             qc = self.teleportation.build_circuit(
                 qc, source_reg, dest_reg,
                 ancilla_reg=tele_ancilla,
                 cr_bell=cr_bell,
             )
 
-            # tick() alterna internamente la ubicación (ORIGINAL↔BACKUP) y resetea el odómetro
+            # tick() internally alternates location (ORIGINAL↔BACKUP) and resets odometer
             new_location = self.qpc.tick(logical_addr)
             self.current_c[logical_addr] = 0
             self.current_t[logical_addr] = 0.0
@@ -496,7 +472,7 @@ class SQTMCompiler:
 
             classical_bit_index = 0
             for logical_addr in range(self.R):
-                # Determinar qué registro tiene los datos — consultando al QPC
+                # Determine which register holds the data by consulting QPC
                 if self.qpc.get_location(logical_addr) == MemLocation.ORIGINAL:
                     # Data is in Original memory
                     target_reg = self._built_registers[f"mem_orig_{logical_addr}"]
@@ -518,7 +494,7 @@ class SQTMCompiler:
             initial_layout = self._get_initial_layout(qc_measured)
             
             print("[Noise Model] Extracting noise characteristics...")
-            print(qc_measured.draw(output="text"))
+            #print(qc_measured.draw(output="text"))
            
             
             # Initialize simulator with MPS method and fixed seed
@@ -536,13 +512,13 @@ class SQTMCompiler:
                 initial_layout=initial_layout,
                 seed_transpiler=42
             )
-            
+            #print(qc_transpiled.draw(output="text"))
+
             print(f"[Simulator] Running {shots} shots with fixed seed...")
             job = simulator.run(qc_transpiled, shots=shots, seed=42)
             result = job.result()
             
             counts = result.get_counts()
-            print(  f"[Simulation] Raw counts: {counts}")
             total_counts = sum(counts.values())
             
             # Extract results: Compare measurement bits against target state

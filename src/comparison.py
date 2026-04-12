@@ -17,6 +17,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.simulator.sqtm_simulator import SQTMCompiler
 from src.simulator.swap_simulator import SwapCompiler
+from src.functions.qubit_mapper import QubitMapper
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -73,6 +74,8 @@ def run_sqtm_compiler(R: int, n: int, c_max: int, t_max_ns: float,
         for state_str, count in list(results['counts'].items())[:5]:
             print(f"    |{state_str}⟩: {count} shots")
 
+        # Include the qubit mapper for visualization
+        results['qubit_mapper'] = sqtm.qubit_mapper
         return results
 
     except Exception as e:
@@ -132,6 +135,8 @@ def run_swap_compiler(R: int, n: int, c_max: int, t_max_ns: float,
         for state_str, count in list(results['counts'].items())[:5]:
             print(f"    |{state_str}⟩: {count} shots")
 
+        # Include the qubit mapper for visualization
+        results['qubit_mapper'] = swap.qubit_mapper
         return results
 
     except Exception as e:
@@ -162,6 +167,12 @@ def analyze_workload(R: int, n: int, c_max: int, t_max_ns: float,
     # Run SWAP
     swap_results = run_swap_compiler(R=R, n=n, c_max=c_max, t_max_ns=t_max_ns,
                                      workload=workload, shots=shots, initial_state=initial_state)
+
+    # Visualize qubit allocation comparison (called once for both mappers)
+    if sqtm_results and swap_results and 'qubit_mapper' in sqtm_results and 'qubit_mapper' in swap_results:
+        output_viz_file = f"results/qubit_mapping_comparison_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
+        QubitMapper.compare_mappers(sqtm_results['qubit_mapper'], swap_results['qubit_mapper'], 
+                                   output_file=output_viz_file)
 
     # Comparative Analysis
     print("\n" + "=" * 70)

@@ -15,10 +15,10 @@ from src.comparison import run_full_comparison
 # ══════════════════════════════════════════════════════════════════════════════
 
 # Compiler Configuration
-R = 2           # Number of memory registers
-n = 1          # Qubits per register (quantum word width)
+R = 2          # Number of memory registers
+n = 2          # Qubits per register (quantum word width)
 c_max = 2       # Gate cost threshold
-t_max_ns = 50000 # Time threshold (nanoseconds)
+t_max_ns = 40000 # Time threshold (nanoseconds)
 
 # Simulation Configuration
 shots = 4000    # Number of simulation shots
@@ -29,18 +29,19 @@ initial_state = 1  # 0 = |0⟩ state, 1 = |1⟩ state
 
 # Test Workloads
 workload1 = [
-    "READ_01",
+    "READ_0",
 
 ]
 
 workload2 = [
-   "READ_01", "IDLE_1", 
- 
+    "READ_0",  "READ_0",
 
+    
 ]
 
 workload3 = [
-  "READ_01", "IDLE_1", "READ_01",
+  "READ_0", "IDLE_1", "READ_0",
+   
  
 ]
 
@@ -97,10 +98,10 @@ def main():
         (f"Workload 1 {len(workload1)} instructions", workload1),
         (f"Workload 2 {len(workload2)} instructions", workload2),
         (f"Workload 3 {len(workload3)} instructions", workload3),
-        (f"Workload 4 {len(workload4)} instructions", workload4),
-        (f"Workload 5 {len(workload5)} instructions", workload5),
-        (f"Workload 6 {len(workload6)} instructions", workload6),
-        (f"Workload 7 {len(workload7)} instructions", workload7),
+        #(f"Workload 4 {len(workload4)} instructions", workload4),
+        #(f"Workload 5 {len(workload5)} instructions", workload5),
+        #(f"Workload 6 {len(workload6)} instructions", workload6),
+        #(f"Workload 7 {len(workload7)} instructions", workload7),
     ]
 
     print("\n[Workloads]")

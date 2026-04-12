@@ -54,9 +54,7 @@ class SwapCompiler:
        
         self.backend = FakeKyiv()
         
-        # CRITICAL: Use EMPTY noise model instead of backend's calibration
-        # Reason: Backend noise includes gate errors, readout errors, etc.
-        # We want ONLY thermal relaxation on idle periods for clean comparison
+        # Use backend noise model as baseline
         self.noise_model = NoiseModel.from_backend(self.backend)
 
         # ──────────────────────────────────────────────────────────
@@ -65,7 +63,7 @@ class SwapCompiler:
         # T1 and T2 times for FakeKyiv (typical NISQ parameters)
         t1_ns = 150_000  # 150 μs
         t2_ns = 100_000  # 100 μs
-        self.time_idle_ns = 700  # One IDLE unit = 7000 ns (equivalent to one gate cycle)
+        self.time_idle_ns = 7000  # One IDLE unit = 700 ns
         
         # Create thermal relaxation error for the idle period
         idle_error = thermal_relaxation_error(t1_ns, t2_ns, self.time_idle_ns)
@@ -75,9 +73,16 @@ class SwapCompiler:
         for q in range(num_physical_qubits):
             self.noise_model.add_quantum_error(idle_error, 'id', [q],warnings=False)
         
-        print(f"[Swap Compiler] Thermal relaxation configured: T1={t1_ns/1000:.1f}μs, T2={t2_ns/1000:.1f}μs")
-        print(f"[Swap Compiler] Idle period per unit: {self.time_idle_ns} ns")
-        print(f"[Swap Compiler] Applied thermal decay to 'id' gate on {num_physical_qubits} qubits")
+        backend_noise = NoiseModel.from_backend(self.backend)
+        for gate in ['x', 'z', 'h', 'cx', 'measure', 'reset']:
+            if gate in backend_noise._default_quantum_errors:
+                self.noise_model.add_all_qubit_quantum_error(
+                    backend_noise._default_quantum_errors[gate], gate
+                )
+        
+        #print(f"[Swap Compiler] Thermal relaxation configured: T1={t1_ns/1000:.1f}μs, T2={t2_ns/1000:.1f}μs")
+        #print(f"[Swap Compiler] Idle period per unit: {self.time_idle_ns} ns")
+        #print(f"[Swap Compiler] Applied thermal decay to 'id' gate on {num_physical_qubits} qubits")
 
         # Initialize QubitMapper for intelligent qubit allocation
         self.qubit_mapper = QubitMapper(self.backend)
@@ -123,10 +128,8 @@ class SwapCompiler:
         print(f"[Backend] {self.backend.__class__.__name__} with {self.qubit_mapper.n_qubits} qubits")
 
     # ──────────────────────────────────────────────────────────────
-    # QUBIT ALLOCATION & PHYSICAL MAPPING (DEPRECATED)
+    # QUBIT ALLOCATION & PHYSICAL MAPPING
     # ──────────────────────────────────────────────────────────────
-    # Note: _allocate_physical_qubits is now handled by QubitMapper.allocate_star_topology()
-    # during compile_workload(). Keeping for backwards compatibility if needed.
 
     def _get_initial_layout(self, qc: QuantumCircuit) -> List[int]:
 
@@ -232,14 +235,14 @@ class SwapCompiler:
         else:
             print("\n[Compilation] Using default initial state |0...0⟩ (no X gates applied)")
 
-        print(f"\n[Compilation] Starting workload processing: {len(workload)} instructions")
+        #print(f"\n[Compilation] Starting workload processing: {len(workload)} instructions")
 
         # ──────────────────────────────────────────────────────────
         # Phase 1: Process workload instructions
         # ──────────────────────────────────────────────────────────
 
         for instruction in workload:
-            print(f"  [Instruction] {instruction}")
+            #print(f"  [Instruction] {instruction}")
 
             if instruction.startswith("IDLE_"):
                 # IDLE instruction: Apply thermal relaxation via native 'id' gate
@@ -343,7 +346,8 @@ class SwapCompiler:
             # Extract initial layout before transpilation
             initial_layout = self._get_initial_layout(qc_measured)
 
-            print(qc_measured.draw(output="text"))
+            # DEBUG: Uncomment below to visualize circuit before transpilation
+            # print(qc_measured.draw(output="text"))
             print("[Noise Model] Extracting noise characteristics...")
             
             # Initialize simulator with MPS method and fixed seed (matching SQTM)
@@ -361,7 +365,7 @@ class SwapCompiler:
                 initial_layout=initial_layout,
                 seed_transpiler=42
             )
-            
+            #print(qc_transpiled.draw(output="text"))
             print(f"[Simulator] Running {shots} shots with fixed seed...")
             job = simulator.run(qc_transpiled, shots=shots, seed=42)
             result = job.result()
