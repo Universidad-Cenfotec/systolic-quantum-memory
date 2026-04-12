@@ -23,8 +23,22 @@ class SystolicTeleportation:
         qc: QuantumCircuit,
         source_reg: QuantumRegister,
         dest_reg: QuantumRegister,
+        ancilla_reg: QuantumRegister = None,
+        cr_bell: ClassicalRegister = None,
     ) -> QuantumCircuit:
-       
+        """
+        Aplica el protocolo de tele-refresco (teleportación cuántica) en el circuito.
+
+        Args:
+            qc:          Circuito sobre el que se construye el protocolo.
+            source_reg:  Registro fuente (qubit a teleportar).
+            dest_reg:    Registro destino.
+            ancilla_reg: Registro ancilla pre-asignado con hardware físico.
+                         Si se provee, se usa directamente (no se crea uno nuevo).
+                         Si es None, se crea dinámicamente (comportamiento original).
+            cr_bell:     Registro clásico pre-creado para medición Bell.
+                         Si es None, se crea dinámicamente.
+        """
         
         # ──────────────────────────────────────────────────────────────
         # 0. VALIDATION: Ensure registers have compatible sizes
@@ -43,31 +57,46 @@ class SystolicTeleportation:
         
         cache_key = (source_reg.name, dest_reg.name)
         
-        if cache_key not in self._ancilla_cache:
-            # PRIMERA VEZ: Crear los registros ancilla y clásico
+        if ancilla_reg is not None:
+            # MODO EXTERNO: usar ancilla pre-asignada (con hardware físico)
+            # Registrar en caché para reutilización futura en el mismo par
+            if cache_key not in self._ancilla_cache:
+                if ancilla_reg not in qc.qregs:
+                    qc.add_register(ancilla_reg)
+                if cr_bell is None:
+                    cr_bell_name = f"cr_bell_{source_reg.name}_to_{dest_reg.name}"
+                    cr_bell = ClassicalRegister(2 * source_reg.size, name=cr_bell_name)
+                    qc.add_register(cr_bell)
+                elif cr_bell not in qc.cregs:
+                    qc.add_register(cr_bell)
+                self._ancilla_cache[cache_key] = ancilla_reg
+                self._crbell_cache[cache_key] = cr_bell
+                print(f"[Teleportation] Using pre-assigned ancilla {ancilla_reg.name} for {source_reg.name} -> {dest_reg.name}")
+            else:
+                ancilla_reg = self._ancilla_cache[cache_key]
+                cr_bell = self._crbell_cache[cache_key]
+                for q in ancilla_reg:
+                    qc.reset(q)
+                print(f"[Teleportation] Reusing pre-assigned ancilla for {source_reg.name} -> {dest_reg.name}")
+        elif cache_key not in self._ancilla_cache:
+            # MODO DINÁMICO: crear ancilla internamente (comportamiento original)
             ancilla_name = f"ancilla_{source_reg.name}_to_{dest_reg.name}"
             cr_bell_name = f"cr_bell_{source_reg.name}_to_{dest_reg.name}"
             
-            # Internal ancilla register for Bell pair generation (N qubits)
-            ancilla_reg = QuantumRegister(N, name=ancilla_name)
+            ancilla_reg = QuantumRegister(source_reg.size, name=ancilla_name)
             qc.add_register(ancilla_reg)
             self._ancilla_cache[cache_key] = ancilla_reg
             
-            # Classical register for Bell measurement results (2*N bits)
-            cr_bell = ClassicalRegister(2 * N, name=cr_bell_name)
+            cr_bell = ClassicalRegister(2 * source_reg.size, name=cr_bell_name)
             qc.add_register(cr_bell)
             self._crbell_cache[cache_key] = cr_bell
             
             print(f"[Teleportation] Created ancilla pair for {source_reg.name} -> {dest_reg.name}")
         else:
-            # SIGUIENTES VECES: Reutilizar los registros existentes
             ancilla_reg = self._ancilla_cache[cache_key]
             cr_bell = self._crbell_cache[cache_key]
-            
-            # Reset ancilla qubits at the start of reuse
             for q in ancilla_reg:
                 qc.reset(q)
-            
             print(f"[Teleportation] Reusing ancilla pair for {source_reg.name} -> {dest_reg.name}")
         
         # ──────────────────────────────────────────────────────────────

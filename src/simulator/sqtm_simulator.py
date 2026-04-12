@@ -20,7 +20,7 @@ from qiskit_ibm_runtime.fake_provider import FakeKyiv, FakeBrisbane
 from qiskit_aer import AerSimulator
 from qiskit_aer.noise import NoiseModel, thermal_relaxation_error
 
-from src.modular_circuits.qpc import QPC
+from src.modular_circuits.qpc import QPC, MemLocation
 from src.modular_circuits.memory_register import StorageRegister
 from src.modular_circuits.operation_register import OperationRegister
 from src.functions.work_phase import SystolicWorkPhase
@@ -105,12 +105,17 @@ class SQTMCompiler:
         ]
 
         # ──────────────────────────────────────────────────────────
-        # 2b. Initialize Ancilla Registers (1 per Original-Backup pair)
-        # Used for quantum teleportation protocol
+        # 2b. Teleportation Ancilla Registers (1 per Original-Backup pair)
+        # Canal Bell para el protocolo de tele-refresco.
+        # Pre-asignados aquí para que reciban hardware físico en la cadena lineal
+        # y NO se creen dinámicamente en tiempo de ejecución.
         # ──────────────────────────────────────────────────────────
 
-        self.ancilla_registers: List[OperationRegister] = [
-            OperationRegister(n_qubits=n, reg_id=f"ancilla_{i}") for i in range(R)
+        self.tele_ancilla_registers: List[QuantumRegister] = [
+            QuantumRegister(n, name=f"tele_ancilla_{i}") for i in range(R)
+        ]
+        self.tele_cr_bell_registers: List[ClassicalRegister] = [
+            ClassicalRegister(2 * n, name=f"cr_bell_{i}") for i in range(R)
         ]
 
         # ──────────────────────────────────────────────────────────
@@ -124,9 +129,7 @@ class SQTMCompiler:
         # ──────────────────────────────────────────────────────────
 
         self.qpc = QPC(logical_size=R, c_max=c_max, t_max=t_max_ns)
-
-        # Location map: 'O' = Original, 'B' = Backup
-        self.location_map: Dict[int, str] = {i: "O" for i in range(R)}
+        # La ubicación (ORIGINAL / BACKUP) por dirección lógica la gestiona el QPC
 
         # Current counters for active tracking (per register)
         self.current_c: Dict[int, int] = {i: 0 for i in range(R)}
@@ -224,15 +227,17 @@ class SQTMCompiler:
         for i in range(self.R):
             qr_orig = self.memory_registers_original[i].build()
             qr_backup = self.memory_registers_backup[i].build()
-            qr_ancilla = self.ancilla_registers[i].build()
+            qr_tele_ancilla = self.tele_ancilla_registers[i]
+            cr_bell_i = self.tele_cr_bell_registers[i]
             
             qc.add_register(qr_orig)
-            qc.add_register(qr_ancilla)
             qc.add_register(qr_backup)
+            qc.add_register(qr_tele_ancilla)
+            qc.add_register(cr_bell_i)
             
             self._built_registers[f"mem_orig_{i}"] = qr_orig
-            self._built_registers[f"ancilla_{i}"] = qr_ancilla
             self._built_registers[f"mem_backup_{i}"] = qr_backup
+            self._built_registers[f"tele_ancilla_{i}"] = qr_tele_ancilla
 
         qr_opreg = self.operation_register.build()
         qc.add_register(qr_opreg)
@@ -241,19 +246,20 @@ class SQTMCompiler:
         # ──────────────────────────────────────────────────────────
         # CHAIN TOPOLOGY ALLOCATION (WITH ANCILLAS)
         # ──────────────────────────────────────────────────────────
-        # Structure: OpReg — Mem_Orig_0 — Ancilla_0 — Mem_Backup_0 — Mem_Orig_1 — Ancilla_1 — Mem_Backup_1 — ...
+        # Structure: OpReg — Mem_Orig_i — Mem_Backup_i — TeleAncilla_i — ...
         # This ensures direct connectivity without routing SWAPs with optimization_level=0
         # ──────────────────────────────────────────────────────────
         
-        print("\n[Compilation] Allocating chain topology with ancillas...")
-        print(f"[Compilation] Structure: OpReg—Mem_Orig—Ancilla—Mem_Backup — ...")
+        print("\n[Compilation] Allocating chain topology...")
+        print(f"[Compilation] Structure: OpReg — Mem_Orig_i — Mem_Backup_i — TeleAncilla_i — ...")
         
-        # Build chain configuration: OpReg + (Original + Ancilla + Backup) x R
+        # Cadena: OpReg + (Orig + Backup + TeleAncilla) x R
+        # TeleAncilla es el canal Bell usado en el tele-refresco.
         chain_config = [("opreg", self.n)]
         for i in range(self.R):
             chain_config.append((f"mem_orig_{i}", self.n))
-            chain_config.append((f"ancilla_{i}", self.n))
             chain_config.append((f"mem_backup_{i}", self.n))
+            chain_config.append((f"tele_ancilla_{i}", self.n))
         
         total_qubits_needed = sum(size for _, size in chain_config)
         print(f"[Compilation] Total qubits needed: {total_qubits_needed}")
@@ -267,7 +273,7 @@ class SQTMCompiler:
             if reg_id == "opreg":
                 qr = self._built_registers["opreg"]
             else:
-                # mem_orig_*, ancilla_*, mem_backup_*
+                # mem_orig_*, ancilla_*, mem_backup_*, tele_ancilla_*
                 qr = self._built_registers[reg_id]
             
             for local_idx, physical_qubit in enumerate(physical_qubits):
@@ -352,8 +358,8 @@ class SQTMCompiler:
                 self.current_c[logical_addr] += 1
                 self.current_t[logical_addr] += self.SWAP_TIME_NS
 
-                # Determine source register (Original or Backup)
-                if self.location_map[logical_addr] == "O":
+                # Determine source register (Original or Backup) — consultando al QPC
+                if self.qpc.get_location(logical_addr) == MemLocation.ORIGINAL:
                     source_reg = self._built_registers[f"mem_orig_{logical_addr}"]
                 else:
                     source_reg = self._built_registers[f"mem_backup_{logical_addr}"]
@@ -378,8 +384,8 @@ class SQTMCompiler:
                 self.current_c[logical_addr] += 1
                 self.current_t[logical_addr] += self.SWAP_TIME_NS
 
-                # Determine destination register
-                if self.location_map[logical_addr] == "O":
+                # Determine destination register — consultando al QPC
+                if self.qpc.get_location(logical_addr) == MemLocation.ORIGINAL:
                     dest_reg = self._built_registers[f"mem_orig_{logical_addr}"]
                 else:
                     dest_reg = self._built_registers[f"mem_backup_{logical_addr}"]
@@ -410,7 +416,7 @@ class SQTMCompiler:
         
         # 2. For each logical address, add qubits from the register that holds the data
         for logical_addr in range(self.R):
-            if self.location_map[logical_addr] == "O":
+            if self.qpc.get_location(logical_addr) == MemLocation.ORIGINAL:
                 # Data is in Original memory
                 qr_data = self._built_registers[f"mem_orig_{logical_addr}"]
             else:
@@ -434,34 +440,32 @@ class SQTMCompiler:
         if requires_refresh:
             print(f"    [Odometer] Threshold exceeded for Mem[{logical_addr}] -> Tele-refreshing")
 
-            # Determine source and destination registers
-            if self.location_map[logical_addr] == "O":
+            # Determinar registros fuente/destino según la ubicación actual del QPC
+            current_location = self.qpc.get_location(logical_addr)
+            if current_location == MemLocation.ORIGINAL:
                 source_reg = self._built_registers[f"mem_orig_{logical_addr}"]
                 dest_reg = self._built_registers[f"mem_backup_{logical_addr}"]
-                future_location = "B"
             else:
                 source_reg = self._built_registers[f"mem_backup_{logical_addr}"]
                 dest_reg = self._built_registers[f"mem_orig_{logical_addr}"]
-                future_location = "O"
 
-            # Apply quantum teleportation
-            qc = self.teleportation.build_circuit(qc, source_reg, dest_reg)
+            # Recuperar la ancilla de teleportación pre-asignada para este par lógico
+            tele_ancilla = self._built_registers[f"tele_ancilla_{logical_addr}"]
+            cr_bell = self.tele_cr_bell_registers[logical_addr]
 
-            # FIX: ¡Interceptar registros ancilla creados dinámicamente y asignarles hardware!
-            for qreg in qc.qregs:
-                if qreg.name not in self._built_registers:
-                    self._allocate_physical_qubits("ancilla", logical_addr, qreg)
-                    self._built_registers[qreg.name] = qreg
+            # Apply quantum teleportation usando la ancilla pre-asignada
+            qc = self.teleportation.build_circuit(
+                qc, source_reg, dest_reg,
+                ancilla_reg=tele_ancilla,
+                cr_bell=cr_bell,
+            )
 
-            # Update location map
-            self.location_map[logical_addr] = future_location
-
-            # Reset counters via QPC
-            self.qpc.tick(logical_addr)
+            # tick() alterna internamente la ubicación (ORIGINAL↔BACKUP) y resetea el odómetro
+            new_location = self.qpc.tick(logical_addr)
             self.current_c[logical_addr] = 0
             self.current_t[logical_addr] = 0.0
 
-            print(f"    [Tele-Refresh] Mem[{logical_addr}] now stored in {future_location}")
+            print(f"    [Tele-Refresh] Mem[{logical_addr}] now stored in {new_location.value}")
 
     # ──────────────────────────────────────────────────────────────
     # SIMULATION WITH NOISE
@@ -492,8 +496,8 @@ class SQTMCompiler:
 
             classical_bit_index = 0
             for logical_addr in range(self.R):
-                # Determine which register holds the data for this logical address
-                if self.location_map[logical_addr] == "O":
+                # Determinar qué registro tiene los datos — consultando al QPC
+                if self.qpc.get_location(logical_addr) == MemLocation.ORIGINAL:
                     # Data is in Original memory
                     target_reg = self._built_registers[f"mem_orig_{logical_addr}"]
                 else:
@@ -603,7 +607,9 @@ class SQTMCompiler:
             "n": self.n,
             "c_max": self.c_max,
             "t_max_ns": self.t_max_ns,
-            "location_map": self.location_map,
+            "qpc_locations": {
+                i: self.qpc.get_location(i).value for i in range(self.R)
+            },
             "current_c": self.current_c,
             "current_t": self.current_t,
             "logical_to_physical_map": self.logical_to_physical_map,
