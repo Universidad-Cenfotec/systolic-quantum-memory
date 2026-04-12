@@ -453,7 +453,7 @@ class QubitMapper:
         fig.legend(handles=legend_elements, loc='lower center', ncol=5, fontsize=10, 
                   bbox_to_anchor=(0.5, -0.02), frameon=True)
         
-        plt.tight_layout(rect=[0, 0.02, 1, 0.96])
+        plt.tight_layout(rect=(0, 0.02, 1, 0.96))
         
         # Ensure output directory exists
         output_dir = os.path.dirname(output_file)
