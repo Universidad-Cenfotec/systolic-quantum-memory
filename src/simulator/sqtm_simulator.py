@@ -221,15 +221,15 @@ class SQTMCompiler:
             self._built_registers[f"mem_backup_{i}"] = qr_backup
             self._built_registers[f"tele_ancilla_{i}"] = qr_tele_ancilla
 
-        qr_opreg = self.operation_register.build()
-        qc.add_register(qr_opreg)
-        self._built_registers["opreg"] = qr_opreg
+        qr_work = self.operation_register.build()
+        qc.add_register(qr_work)
+        self._built_registers["q_work"] = qr_work
 
-        # Chain Topology: OpReg — (Mem_Orig_i — Mem_Backup_i — TeleAncilla_i) x R
+        # Chain Topology: q_work — (Mem_Orig_i — Mem_Backup_i — TeleAncilla_i) x R
         # Linear structure ensures direct connectivity without routing SWAPs
         
         print("\n[Compilation] Allocating chain topology...")
-        chain_config = [("opreg", self.n)]
+        chain_config = [("q_work", self.n)]
         for i in range(self.R):
             chain_config.append((f"mem_orig_{i}", self.n))
             chain_config.append((f"mem_backup_{i}", self.n))
@@ -244,8 +244,8 @@ class SQTMCompiler:
         
         # Map logical qubits to physical qubits for all registers
         for reg_id, physical_qubits in allocation_map.items():
-            if reg_id == "opreg":
-                qr = self._built_registers["opreg"]
+            if reg_id == "q_work":
+                qr = self._built_registers["q_work"]
             else:
                 qr = self._built_registers[reg_id]
             
@@ -269,8 +269,8 @@ class SQTMCompiler:
             # Apply X gates to ALL qubits (memory and operation register) to prepare |1...1⟩ state
             # This ensures SWAPs don't affect the final state validation
             
-            # Apply X to operation register
-            for qubit in qr_opreg:
+            # Apply X to work register
+            for qubit in qr_work:
                 qc.x(qubit)
             
             # Apply X to all memory qubits
@@ -339,8 +339,8 @@ class SQTMCompiler:
                 else:
                     source_reg = self._built_registers[f"mem_backup_{logical_addr}"]
 
-                # Apply SWAP between source and OpReg
-                qc = self.work_phase.apply_swap(qc, source_reg, qr_opreg)
+                # Apply SWAP between source and work register
+                qc = self.work_phase.apply_swap(qc, source_reg, qr_work)
 
                 qc.barrier()  # Prevent inter-SWAP optimization
                 # Check if odometer threshold exceeded
@@ -366,8 +366,8 @@ class SQTMCompiler:
                 else:
                     dest_reg = self._built_registers[f"mem_backup_{logical_addr}"]
 
-                # Apply SWAP between OpReg and destination
-                qc = self.work_phase.apply_swap(qc, qr_opreg, dest_reg)
+                # Apply SWAP between work register and destination
+                qc = self.work_phase.apply_swap(qc, qr_work, dest_reg)
 
                 qc.barrier()  # Prevent inter-SWAP optimization
                 # Check if odometer threshold exceeded
@@ -386,7 +386,7 @@ class SQTMCompiler:
         active_qubits = []
         
         # 1. Add all qubits from operation register (work register)
-        qr_work = self._built_registers["opreg"]
+        qr_work = self._built_registers["q_work"]
         for qubit in qr_work:
             active_qubits.append(qubit)
         
@@ -494,7 +494,7 @@ class SQTMCompiler:
             initial_layout = self._get_initial_layout(qc_measured)
             
             print("[Noise Model] Extracting noise characteristics...")
-            #print(qc_measured.draw(output="text"))
+            print(qc_measured.draw(output="text"))
            
             
             # Initialize simulator with MPS method and fixed seed
