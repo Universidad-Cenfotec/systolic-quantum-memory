@@ -5,7 +5,6 @@
 
 from typing import List, Dict, Set, Optional, Tuple
 import networkx as nx
-from networkx.algorithms import isomorphism
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import os
@@ -53,10 +52,14 @@ class QubitMapper:
         return self.find_connected_subgraph(size, preferred_start=start)
 
     def allocate_register(self, register_type: str, register_id: str, size: int, preferred_location: Optional[List[int]] = None) -> List[int]:
+        """Allocate a register by finding a connected subgraph of desired size."""
         if preferred_location:
-            if (len(preferred_location) == size and all(q in self.available_qubits for q in preferred_location)):
+            if len(preferred_location) == size and all(q in self.available_qubits for q in preferred_location):
                 subgraph = self.graph.subgraph(preferred_location)
-                allocated = (preferred_location if nx.is_connected(subgraph) else self.find_connected_subgraph(size))
+                try:
+                    allocated = preferred_location if nx.is_connected(subgraph) else self.find_connected_subgraph(size)
+                except:
+                    allocated = self.find_connected_subgraph(size)
             else:
                 allocated = self.find_connected_subgraph(size)
         else:
@@ -64,81 +67,12 @@ class QubitMapper:
         if allocated is None:
             raise RuntimeError(f"Cannot allocate {size} qubits for {register_id}.")
         for qubit in allocated:
-            self.available_qubits.remove(qubit)
+            self.available_qubits.discard(qubit)
         self.allocation_map[register_id] = allocated
         return allocated
 
-    def allocate_sqtm_topology(self, R: int, n: int) -> Dict[str, List[int]]:
-        """
-        Allocate SQTM topology with shared operation register.
-        
-        Structure:
-        - q_work: 1 shared register with n qubits
-        - For each logical address i (0 to R-1):
-          - mem_orig_i: n qubits
-          - mem_backup_i: n qubits
-          - tele_ancilla_i: n qubits
-        
-        Total: n + R*3*n = n*(1 + 3*R) qubits
-        """
-        result = {}
-        
-        print(f"[QubitMapper] SQTM Hardware-Aware Allocation (Linear Chain)")
-        print(f"  Target: R={R} memory pairs, n={n} qubits per register")
-        print(f"  Structure: q_work(n) + R x [mem_orig(n) + mem_backup(n) + tele_ancilla(n)]")
-        print(f"  Total qubits needed: {n * (1 + 3 * R)}")
-        print(f"  Available: {len(self.available_qubits)} / {self.n_qubits}")
-        
-        # Calculate total qubits needed: 1 q_work (shared) + 3*R memory registers
-        total_qubits_needed = n * (1 + 3 * R)
-        if total_qubits_needed > len(self.available_qubits):
-            raise RuntimeError(f"[QubitMapper] Need {total_qubits_needed} qubits, have {len(self.available_qubits)}")
-        
-        # Find a linear chain of qubits
-        chain = self._find_linear_chain_simple(total_qubits_needed)
-        if chain is None:
-            raise RuntimeError(f"[QubitMapper] Cannot find chain of length {total_qubits_needed}")
-        
-        offset = 0
-        
-        # 1. Allocate shared q_work (first n qubits of chain)
-        result["q_work"] = chain[offset:offset + n]
-        offset += n
-        
-        # 2. Allocate memory registers for each logical address
-        for r_idx in range(R):
-            # mem_orig_r_idx
-            result[f"mem_orig_{r_idx}"] = chain[offset:offset + n]
-            offset += n
-            
-            # mem_backup_r_idx
-            result[f"mem_backup_{r_idx}"] = chain[offset:offset + n]
-            offset += n
-            
-            # tele_ancilla_r_idx
-            result[f"tele_ancilla_{r_idx}"] = chain[offset:offset + n]
-            offset += n
-        
-        # Remove allocated qubits from available pool
-        for qubits in result.values():
-            for q in qubits:
-                self.available_qubits.discard(q)
-        
-        # Update allocation_map for tracking
-        for reg_id, qubits in result.items():
-            self.allocation_map[reg_id] = qubits
-        
-        print(f"[QubitMapper] Allocation Complete:")
-        for reg_id in sorted(result.keys()):
-            qubits = result[reg_id]
-            print(f"  [{reg_id:20s}] qubits {sorted(qubits)}")
-        
-        return result
-
     def allocate_chain_topology(self, chain_config: List[Tuple[str, int]]) -> Dict[str, List[int]]:
-        result = {}
-        print(f"[QubitMapper] Allocating chain topology (Hardware-Aware):")
-        print(f"  Config: {chain_config}")
+        is_sqtm = any('tele_ancilla' in reg_name for reg_name, _ in chain_config)
         R = n = 0
         for reg_name, size in chain_config:
             if reg_name == "q_work":
@@ -149,17 +83,130 @@ class QubitMapper:
                     R = max(R, reg_num + 1)
                 except (IndexError, ValueError):
                     pass
+            elif reg_name.startswith("mem_") and not reg_name.startswith("mem_orig") and not reg_name.startswith("mem_backup"):
+                try:
+                    reg_num = int(reg_name.split("_")[1])
+                    R = max(R, reg_num + 1)
+                except (IndexError, ValueError):
+                    pass
         if R == 0 or n == 0:
             return self._allocate_generic_chain(chain_config)
-        print(f"  Detected SQTM: R={R}, n={n}")
-        sqtm_result = self.allocate_sqtm_topology(R=R, n=n)
-        
-        # Copy results directly (q_work is now a single shared register)
-        for reg_name, _ in chain_config:
-            if reg_name in sqtm_result:
-                result[reg_name] = sqtm_result[reg_name]
-        
+        if is_sqtm:
+            return self.allocate_sqtm_per_bit_topology(R=R, n=n)
+        else:
+            return self.allocate_swap_per_bit_topology(R=R, n=n)
+
+    def allocate_sqtm_per_bit_topology(self, R: int, n: int) -> Dict[str, List[int]]:
+        result = {}
+        result["q_work"] = []
+        for r_idx in range(R):
+            result[f"mem_orig_{r_idx}"] = []
+            result[f"mem_backup_{r_idx}"] = []
+            result[f"tele_ancilla_{r_idx}"] = []
+        print(f"[QubitMapper] SQTM Per-Bit Allocation (Qubit-Centric Center)")
+        print(f"  Target: R={R} memory pairs, n={n} qubits per register")
+        total_qubits_needed = n * (1 + 3 * R)
+        if total_qubits_needed > len(self.available_qubits):
+            raise RuntimeError(f"[QubitMapper] Need {total_qubits_needed} qubits, have {len(self.available_qubits)}")
+        for bit_idx in range(n):
+            q_center = self._find_next_available_qubit()
+            if q_center is None:
+                raise RuntimeError(f"[QubitMapper] Cannot allocate q_work[{bit_idx}]")
+            result["q_work"].append(q_center)
+            self.available_qubits.discard(q_center)
+            exclude_set = set(result["q_work"])
+            mem_orig_0 = self._find_connected_qubit_near(q_center, exclude_set) or self._find_next_available_qubit(exclude_set)
+            if mem_orig_0 is None:
+                raise RuntimeError(f"Cannot allocate mem_orig_0[{bit_idx}]")
+            result["mem_orig_0"].append(mem_orig_0)
+            self.available_qubits.discard(mem_orig_0)
+            exclude_set.add(mem_orig_0)
+            tele_0 = self._find_connected_qubit_near(mem_orig_0, exclude_set) or self._find_next_available_qubit(exclude_set)
+            if tele_0 is None:
+                raise RuntimeError(f"Cannot allocate tele_ancilla_0[{bit_idx}]")
+            result["tele_ancilla_0"].append(tele_0)
+            self.available_qubits.discard(tele_0)
+            exclude_set.add(tele_0)
+            mem_backup_0 = self._find_connected_qubit_near(tele_0, exclude_set) or self._find_next_available_qubit(exclude_set)
+            if mem_backup_0 is None:
+                raise RuntimeError(f"Cannot allocate mem_backup_0[{bit_idx}]")
+            result["mem_backup_0"].append(mem_backup_0)
+            self.available_qubits.discard(mem_backup_0)
+            exclude_set.add(mem_backup_0)
+            for r_idx in range(1, R):
+                mem_orig_r = self._find_connected_qubit_near(q_center, exclude_set) or self._find_next_available_qubit(exclude_set)
+                if mem_orig_r is None:
+                    raise RuntimeError(f"Cannot allocate mem_orig_{r_idx}[{bit_idx}]")
+                result[f"mem_orig_{r_idx}"].append(mem_orig_r)
+                self.available_qubits.discard(mem_orig_r)
+                exclude_set.add(mem_orig_r)
+                tele_r = self._find_connected_qubit_near(mem_orig_r, exclude_set) or self._find_next_available_qubit(exclude_set)
+                if tele_r is None:
+                    raise RuntimeError(f"Cannot allocate tele_ancilla_{r_idx}[{bit_idx}]")
+                result[f"tele_ancilla_{r_idx}"].append(tele_r)
+                self.available_qubits.discard(tele_r)
+                exclude_set.add(tele_r)
+                mem_backup_r = self._find_connected_qubit_near(tele_r, exclude_set) or self._find_next_available_qubit(exclude_set)
+                if mem_backup_r is None:
+                    raise RuntimeError(f"Cannot allocate mem_backup_{r_idx}[{bit_idx}]")
+                result[f"mem_backup_{r_idx}"].append(mem_backup_r)
+                self.available_qubits.discard(mem_backup_r)
+                exclude_set.add(mem_backup_r)
+        for reg_id, qubits in result.items():
+            self.allocation_map[reg_id] = qubits
+        print(f"[QubitMapper] Per-Bit Allocation Complete:")
+        for reg_id in sorted(result.keys()):
+            print(f"  [{reg_id:20s}] qubits {sorted(result[reg_id])}")
         return result
+
+    def allocate_swap_per_bit_topology(self, R: int, n: int) -> Dict[str, List[int]]:
+        result = {}
+        result["q_work"] = []
+        for r_idx in range(R):
+            result[f"mem_{r_idx}"] = []
+        print(f"[QubitMapper] SWAP Per-Bit Allocation (Qubit-Centric Center)")
+        print(f"  Target: R={R} memory registers, n={n} qubits per register")
+        total_qubits_needed = n * (1 + R)
+        if total_qubits_needed > len(self.available_qubits):
+            raise RuntimeError(f"Need {total_qubits_needed} qubits, have {len(self.available_qubits)}")
+        for bit_idx in range(n):
+            q_center = self._find_next_available_qubit()
+            if q_center is None:
+                raise RuntimeError(f"Cannot allocate q_work[{bit_idx}]")
+            result["q_work"].append(q_center)
+            self.available_qubits.discard(q_center)
+            exclude_set = set(result["q_work"])
+            mem_0 = self._find_connected_qubit_near(q_center, exclude_set) or self._find_next_available_qubit(exclude_set)
+            if mem_0 is None:
+                raise RuntimeError(f"Cannot allocate mem_0[{bit_idx}]")
+            result["mem_0"].append(mem_0)
+            self.available_qubits.discard(mem_0)
+            exclude_set.add(mem_0)
+            for r_idx in range(1, R):
+                mem_r = self._find_connected_qubit_near(q_center, exclude_set) or self._find_next_available_qubit(exclude_set)
+                if mem_r is None:
+                    raise RuntimeError(f"Cannot allocate mem_{r_idx}[{bit_idx}]")
+                result[f"mem_{r_idx}"].append(mem_r)
+                self.available_qubits.discard(mem_r)
+                exclude_set.add(mem_r)
+        for reg_id, qubits in result.items():
+            self.allocation_map[reg_id] = qubits
+        print(f"[QubitMapper] Per-Bit Allocation Complete:")
+        for reg_id in sorted(result.keys()):
+            print(f"  [{reg_id:20s}] qubits {sorted(result[reg_id])}")
+        return result
+
+    def _find_next_available_qubit(self, exclude: Optional[Set[int]] = None) -> Optional[int]:
+        exclude_set = exclude if exclude is not None else set()
+        available = self.available_qubits - exclude_set
+        return min(available) if available else None
+
+    def _find_connected_qubit_near(self, qubit: int, exclude: Optional[Set[int]] = None) -> Optional[int]:
+        exclude_set = exclude if exclude is not None else set()
+        for neighbor in self.graph.neighbors(qubit):
+            if neighbor in self.available_qubits and neighbor not in exclude_set:
+                return neighbor
+        return None
 
     def _allocate_generic_chain(self, chain_config: List[Tuple[str, int]]) -> Dict[str, List[int]]:
         result = {}
@@ -206,269 +253,69 @@ class QubitMapper:
                 return result
         return None
 
-    def allocate_multi_chain_topology(self, num_chains: int, chain_template: List[Tuple[str, int]], base_chain_length: Optional[int] = None) -> Dict[str, List[int]]:
-        result = {}
-        for chain_idx in range(num_chains):
-            indexed_config = [(f"{base_id}_{chain_idx}", size) for base_id, size in chain_template]
-            chain_length = sum(size for _, size in indexed_config)
-            chain = self._find_linear_chain_simple(chain_length)
-            if chain is None:
-                raise RuntimeError(f"Cannot find chain {chain_idx}")
-            offset = 0
-            for reg_id, size in indexed_config:
-                segment = chain[offset:offset + size]
-                for q in segment:
-                    self.available_qubits.discard(q)
-                self.allocation_map[reg_id] = segment
-                result[reg_id] = segment
-                offset += size
-        return result
-
-    def visualize_mapping(self, output_file: str = "results/qubit_mapping.png") -> None:
-        """
-        Visualize the qubit allocation mapping with connectivity matrix.
-        
-        Creates a visualization showing:
-        - Connectivity matrix of used qubits (1 = connected, 0 = not connected)
-        - Color-coded register allocations
-        - Physical qubit allocation summary table
-        """
-        try:
-            import matplotlib
-            matplotlib.use('Agg')
-        except:
-            pass
-        
-        # Get all used qubits
-        used_qubits = set()
-        for qubits in self.allocation_map.values():
-            used_qubits.update(qubits)
-        
-        used_qubits = sorted(list(used_qubits))
-        
-        if not used_qubits:
-            print("[QubitMapper] No qubits allocated. Skipping visualization.")
-            return
-        
-        # Create figure with subplots
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(18, 8))
-        
-        # ===== LEFT PLOT: Connectivity Matrix =====
-        ax1.set_title("Qubit Connectivity Matrix (Used Qubits Only)", 
-                      fontsize=14, fontweight='bold')
-        
-        # Create connectivity matrix for used qubits only
-        qubit_to_idx = {q: i for i, q in enumerate(used_qubits)}
-        n_used = len(used_qubits)
-        connectivity_matrix = [[0] * n_used for _ in range(n_used)]
-        
-        # Populate connectivity matrix
-        for a, b in self.coupling_map:
-            if a in qubit_to_idx and b in qubit_to_idx:
-                i, j = qubit_to_idx[a], qubit_to_idx[b]
-                connectivity_matrix[i][j] = 1
-                connectivity_matrix[j][i] = 1
-        
-        # Create color map for allocations
-        allocation_colors = {}
-        color_map = {
-            'q_work': '#FF6B6B',           # Red
-            'mem_orig': '#4ECDC4',        # Teal
-            'mem_backup': '#45B7D1',      # Blue
-            'tele_ancilla': '#FFA07A',    # Light salmon
-        }
-        
-        for reg_name, qubits in self.allocation_map.items():
-            color = color_map.get('q_work' if 'q_work' in reg_name else
-                                 'mem_orig' if 'mem_orig' in reg_name else
-                                 'mem_backup' if 'mem_backup' in reg_name else
-                                 'tele_ancilla', '#D3D3D3')
-            for q in qubits:
-                allocation_colors[q] = color
-        
-        # Draw the matrix as an image with grid
-        im = ax1.imshow(connectivity_matrix, cmap='YlOrRd', aspect='auto', alpha=0.7)
-        
-        # Add grid lines
-        for i in range(n_used + 1):
-            ax1.axhline(i - 0.5, color='black', linewidth=0.5)
-            ax1.axvline(i - 0.5, color='black', linewidth=0.5)
-        
-        # Add qubit labels on axes
-        ax1.set_xticks(range(n_used))
-        ax1.set_yticks(range(n_used))
-        ax1.set_xticklabels(used_qubits, rotation=45, ha='right', fontsize=9)
-        ax1.set_yticklabels(used_qubits, fontsize=9)
-        ax1.set_xlabel("Physical Qubit", fontsize=11, fontweight='bold')
-        ax1.set_ylabel("Physical Qubit", fontsize=11, fontweight='bold')
-        
-        # Add text annotations for connections
-        for i in range(n_used):
-            for j in range(n_used):
-                if connectivity_matrix[i][j] == 1:
-                    text_color = 'white' if connectivity_matrix[i][j] > 0.5 else 'black'
-                    ax1.text(j, i, '1', ha='center', va='center', 
-                            color=text_color, fontsize=8, fontweight='bold')
-        
-        # Add colorbar
-        cbar = plt.colorbar(im, ax=ax1)
-        cbar.set_label('Connected (1 = Yes, 0 = No)', fontsize=10)
-        
-        # ===== RIGHT PLOT: Register Allocation Table =====
-        ax2.axis('tight')
-        ax2.axis('off')
-        
-        # Create allocation table
-        table_data = [['Register', 'Physical Qubits', 'Count']]
-        
-        for reg_name in sorted(self.allocation_map.keys()):
-            qubits = self.allocation_map[reg_name]
-            qubit_str = '[' + ', '.join(map(str, sorted(qubits))) + ']'
-            table_data.append([reg_name, qubit_str, str(len(qubits))])
-        
-        # Add summary
-        total_allocated = sum(len(q) for q in self.allocation_map.values())
-        table_data.append(['', '', ''])
-        table_data.append(['TOTAL ALLOCATED', '', str(total_allocated)])
-        table_data.append(['BACKEND QUBITS', '', str(self.n_qubits)])
-        table_data.append(['USED QUBITS', '', str(len(used_qubits))])
-        
-        # Create table
-        table = ax2.table(cellText=table_data, cellLoc='left', loc='center',
-                         colWidths=[0.3, 0.5, 0.2])
-        table.auto_set_font_size(False)
-        table.set_fontsize(10)
-        table.scale(1, 2.5)
-        
-        # Style header row
-        for i in range(3):
-            table[(0, i)].set_facecolor('#4ECDC4')
-            table[(0, i)].set_text_props(weight='bold', color='white')
-        
-        # Style data rows with register colors
-        for row_idx, (reg_name, _, _) in enumerate(table_data[1:-4], 1):
-            color = color_map.get('opreg' if 'opreg' in reg_name else
-                                 'mem_orig' if 'mem_orig' in reg_name else
-                                 'mem_backup' if 'mem_backup' in reg_name else
-                                 'tele_ancilla', '#F0F0F0')
-            for col in range(3):
-                table[(row_idx, col)].set_facecolor(color)
-                table[(row_idx, col)].set_alpha(0.3)
-        
-        # Style summary rows
-        summary_start = len(table_data) - 4
-        for row in range(summary_start, len(table_data)):
-            for col in range(3):
-                if row == summary_start:
-                    table[(row, col)].set_facecolor('#F0F0F0')
-                else:
-                    table[(row, col)].set_facecolor('#E8E8E8')
-                    table[(row, col)].set_text_props(weight='bold')
-        
-        # Add legend
-        legend_elements = [
-            mpatches.Patch(facecolor=color_map['opreg'], label='Operation Register'),
-            mpatches.Patch(facecolor=color_map['mem_orig'], label='Memory Original'),
-            mpatches.Patch(facecolor=color_map['mem_backup'], label='Memory Backup'),
-            mpatches.Patch(facecolor=color_map['tele_ancilla'], label='Teleportation Ancilla'),
-        ]
-        ax2.legend(handles=legend_elements, loc='upper left', fontsize=10)
-        ax2.set_title("Qubit Allocation Summary", fontsize=14, fontweight='bold', pad=20)
-        
-        plt.tight_layout()
-        
-        # Ensure output directory exists
-        output_dir = os.path.dirname(output_file)
-        if output_dir and not os.path.exists(output_dir):
-            os.makedirs(output_dir)
-        
-        # Save figure
-        plt.savefig(output_file, dpi=150, bbox_inches='tight')
-        print(f"\n[QubitMapper] Visualization saved to: {output_file}")
-        
-        plt.close()
-
     @staticmethod
-    def compare_mappers(sqtm_mapper: 'QubitMapper', swap_mapper: 'QubitMapper', 
-                       output_file: str = "results/qubit_mapping_comparison.png") -> None:
-        """
-        Compare qubit allocations between SQTM and SWAP mappers using connectivity matrices.
-        
-        Creates a visualization showing both allocations with connectivity matrices
-        for easy comparison.
-        """
-        try:
-            import matplotlib
-            matplotlib.use('Agg')
-        except:
-            pass
-        
+    def compare_mappers(mapper1, mapper2, output_file: Optional[str] = None) -> None:
+        """Compare two QubitMapper allocations with connectivity matrices and allocation tables."""
         fig, ((ax1_matrix, ax1_table), (ax2_matrix, ax2_table)) = plt.subplots(2, 2, figsize=(18, 14))
         
         color_map = {
-            'q_work': '#FF6B6B',           # Red
-            'mem_orig': '#4ECDC4',        # Teal
-            'mem_backup': '#45B7D1',      # Blue
-            'tele_ancilla': '#FFA07A',    # Light salmon
+            'q_work': '#FF6B6B',
+            'mem_orig': '#4ECDC4',
+            'mem_backup': '#45B7D1',
+            'mem_': '#FFA07A',
+            'tele_ancilla': '#FFB347',
         }
         
-        # Helper function to draw mapper
         def draw_mapper(mapper, ax_matrix, ax_table, title, compiler_name):
-            # Get used qubits for this mapper
-            used_qubits = set()
+            """Draw connectivity matrix and allocation table for one mapper."""
+            all_allocated = set()
             for qubits in mapper.allocation_map.values():
-                used_qubits.update(qubits)
+                all_allocated.update(qubits)
             
-            used_qubits = sorted(list(used_qubits))
+            sorted_qubits = sorted(all_allocated)
+            n = len(sorted_qubits)
             
-            if not used_qubits:
-                ax_matrix.text(0.5, 0.5, 'No qubits allocated', 
-                              ha='center', va='center', fontsize=12)
+            if n == 0:
+                ax_matrix.text(0.5, 0.5, 'No qubits allocated', ha='center', va='center')
                 ax_matrix.axis('off')
                 ax_table.axis('off')
                 return
             
-            # ===== LEFT: Connectivity Matrix =====
+            # === LEFT: Connectivity Matrix ===
             ax_matrix.set_title(f"{title}\nConnectivity Matrix (Used Qubits)", 
                              fontsize=12, fontweight='bold')
             
-            # Create connectivity matrix for used qubits only
-            qubit_to_idx = {q: i for i, q in enumerate(used_qubits)}
-            n_used = len(used_qubits)
-            connectivity_matrix = [[0] * n_used for _ in range(n_used)]
+            qubit_index = {q: i for i, q in enumerate(sorted_qubits)}
+            matrix = [[0] * n for _ in range(n)]
+            for i, q1 in enumerate(sorted_qubits):
+                for j, q2 in enumerate(sorted_qubits):
+                    if mapper.graph.has_edge(q1, q2):
+                        matrix[i][j] = 1
             
-            # Populate connectivity matrix
-            for a, b in mapper.coupling_map:
-                if a in qubit_to_idx and b in qubit_to_idx:
-                    i, j = qubit_to_idx[a], qubit_to_idx[b]
-                    connectivity_matrix[i][j] = 1
-                    connectivity_matrix[j][i] = 1
+            im = ax_matrix.imshow(matrix, cmap='YlOrRd', aspect='auto', alpha=0.7)
             
-            # Draw the matrix as an image with grid
-            im = ax_matrix.imshow(connectivity_matrix, cmap='YlOrRd', aspect='auto', alpha=0.7)
-            
-            # Add grid lines
-            for i in range(n_used + 1):
+            # Add grid
+            for i in range(n + 1):
                 ax_matrix.axhline(i - 0.5, color='black', linewidth=0.5)
                 ax_matrix.axvline(i - 0.5, color='black', linewidth=0.5)
             
-            # Add qubit labels on axes
-            ax_matrix.set_xticks(range(n_used))
-            ax_matrix.set_yticks(range(n_used))
-            ax_matrix.set_xticklabels(used_qubits, rotation=45, ha='right', fontsize=8)
-            ax_matrix.set_yticklabels(used_qubits, fontsize=8)
+            ax_matrix.set_xticks(range(n))
+            ax_matrix.set_yticks(range(n))
+            ax_matrix.set_xticklabels(sorted_qubits, rotation=45, fontsize=8)
+            ax_matrix.set_yticklabels(sorted_qubits, fontsize=8)
             ax_matrix.set_xlabel("Physical Qubit", fontsize=10, fontweight='bold')
             ax_matrix.set_ylabel("Physical Qubit", fontsize=10, fontweight='bold')
             
-            # Add text annotations for connections
-            for i in range(n_used):
-                for j in range(n_used):
-                    if connectivity_matrix[i][j] == 1:
-                        text_color = 'white' if connectivity_matrix[i][j] > 0.5 else 'black'
+            # Add text annotations
+            for i in range(n):
+                for j in range(n):
+                    if matrix[i][j] == 1:
                         ax_matrix.text(j, i, '1', ha='center', va='center', 
-                                    color=text_color, fontsize=7, fontweight='bold')
+                                    color='white', fontsize=7, fontweight='bold')
             
-            # ===== RIGHT: Allocation Table =====
+            plt.colorbar(im, ax=ax_matrix, label='Connected')
+            
+            # === RIGHT: Allocation Table ===
             ax_table.axis('tight')
             ax_table.axis('off')
             
@@ -485,7 +332,7 @@ class QubitMapper:
             table_data.append(['', '', ''])
             table_data.append(['TOTAL ALLOCATED', '', str(total_allocated)])
             table_data.append(['BACKEND QUBITS', '', str(mapper.n_qubits)])
-            table_data.append(['USED QUBITS', '', str(len(used_qubits))])
+            table_data.append(['USED QUBITS', '', str(len(all_allocated))])
             
             table = ax_table.table(cellText=table_data, cellLoc='left', loc='center',
                                   colWidths=[0.35, 0.45, 0.2])
@@ -498,12 +345,13 @@ class QubitMapper:
                 table[(0, i)].set_facecolor('#4ECDC4')
                 table[(0, i)].set_text_props(weight='bold', color='white')
             
-            # Style data rows with register colors
+            # Style data rows
             for row_idx, (reg_name, _, _) in enumerate(table_data[1:-4], 1):
-                color = color_map.get('q_work' if 'q_work' in reg_name else
-                                     'mem_orig' if 'mem_orig' in reg_name else
-                                     'mem_backup' if 'mem_backup' in reg_name else
-                                     'tele_ancilla', '#F0F0F0')
+                color = '#FF6B6B' if 'q_work' in reg_name else \
+                       '#4ECDC4' if 'mem_orig' in reg_name else \
+                       '#45B7D1' if 'mem_backup' in reg_name else \
+                       '#FFB347' if 'tele_ancilla' in reg_name else \
+                       '#FFA07A'
                 for col in range(3):
                     table[(row_idx, col)].set_facecolor(color)
                     table[(row_idx, col)].set_alpha(0.3)
@@ -519,33 +367,28 @@ class QubitMapper:
                         table[(row, col)].set_text_props(weight='bold')
         
         # Draw both mappers
-        draw_mapper(sqtm_mapper, ax1_matrix, ax1_table, "SQTM Allocation (Dual-Register)", "SQTM")
-        draw_mapper(swap_mapper, ax2_matrix, ax2_table, "SWAP Allocation (Single-Register)", "SWAP")
+        draw_mapper(mapper1, ax1_matrix, ax1_table, "SQTM Allocation (Dual-Register)", "SQTM")
+        draw_mapper(mapper2, ax2_matrix, ax2_table, "SWAP Allocation (Single-Register)", "SWAP")
         
         # Add main title
         fig.suptitle('Qubit Allocation Comparison: SQTM vs SWAP', 
                     fontsize=16, fontweight='bold', y=0.98)
         
-        # Add legend at the bottom
+        # Add legend
         legend_elements = [
-            mpatches.Patch(facecolor=color_map['q_work'], label='Operation Register'),
-            mpatches.Patch(facecolor=color_map['mem_orig'], label='Memory Original'),
-            mpatches.Patch(facecolor=color_map['mem_backup'], label='Memory Backup'),
-            mpatches.Patch(facecolor=color_map['tele_ancilla'], label='Teleportation Ancilla'),
+            mpatches.Patch(facecolor='#FF6B6B', label='Operation Register (q_work)'),
+            mpatches.Patch(facecolor='#4ECDC4', label='Memory Original'),
+            mpatches.Patch(facecolor='#45B7D1', label='Memory Backup'),
+            mpatches.Patch(facecolor='#FFB347', label='Teleportation Ancilla'),
         ]
-        fig.legend(handles=legend_elements, loc='lower center', ncol=4, fontsize=10, 
+        fig.legend(handles=legend_elements, loc='lower center', ncol=4, fontsize=10,
                   bbox_to_anchor=(0.5, -0.02), frameon=True)
         
         plt.tight_layout(rect=(0, 0.02, 1, 0.96))
         
-        # Ensure output directory exists
-        output_dir = os.path.dirname(output_file)
-        if output_dir and not os.path.exists(output_dir):
-            os.makedirs(output_dir)
-        
-        # Save figure
-        plt.savefig(output_file, dpi=150, bbox_inches='tight')
-        print(f"\n[QubitMapper] Comparison visualization saved to: {output_file}")
+        if output_file:
+            os.makedirs(os.path.dirname(output_file) or '.', exist_ok=True)
+            plt.savefig(output_file, dpi=150, bbox_inches='tight')
+            print(f"[QubitMapper] Comparison visualization saved to: {output_file}")
         
         plt.close()
-

@@ -1,7 +1,7 @@
 # ============================================================
-# SQTM Research Project — Main Simulator & Compiler
+# SQTM Research Project - Main Simulator & Compiler
 # Systolic Quantum Teleportation Memory
-# Authors: Danny Valerio-Ramírez & Santiago Núñez-Corrales
+# Authors: Danny Valerio-Ram?rez & Santiago N??ez-Corrales
 # Role: Quantum Compiler Architect (Senior)
 # ============================================================
 
@@ -47,9 +47,9 @@ class SwapCompiler:
         self.t_max_ns = t_max_ns
         self.initial_state = initial_state
 
-        # ──────────────────────────────────────────────────────────
+        # ----------------------------------------------------------
         # 1. Initialize backend and qubit resources
-        # ──────────────────────────────────────────────────────────
+        # ----------------------------------------------------------
         
        
         self.backend = FakeKyiv()
@@ -57,12 +57,12 @@ class SwapCompiler:
         # Use backend noise model as baseline
         self.noise_model = NoiseModel.from_backend(self.backend)
 
-        # ──────────────────────────────────────────────────────────
+        # ----------------------------------------------------------
         # 1b. Create thermal relaxation error linked to 'id' gate
-        # ──────────────────────────────────────────────────────────
+        # ----------------------------------------------------------
         # T1 and T2 times for FakeKyiv (typical NISQ parameters)
-        t1_ns = 150_000  # 150 μs
-        t2_ns = 100_000  # 100 μs
+        t1_ns = 150_000  # 150 ?s
+        t2_ns = 100_000  # 100 ?s
         self.time_idle_ns = 7000  # One IDLE unit = 700 ns
         
         # Create thermal relaxation error for the idle period
@@ -80,7 +80,7 @@ class SwapCompiler:
                     backend_noise._default_quantum_errors[gate], gate
                 )
         
-        #print(f"[Swap Compiler] Thermal relaxation configured: T1={t1_ns/1000:.1f}μs, T2={t2_ns/1000:.1f}μs")
+        #print(f"[Swap Compiler] Thermal relaxation configured: T1={t1_ns/1000:.1f}?s, T2={t2_ns/1000:.1f}?s")
         #print(f"[Swap Compiler] Idle period per unit: {self.time_idle_ns} ns")
         #print(f"[Swap Compiler] Applied thermal decay to 'id' gate on {num_physical_qubits} qubits")
 
@@ -99,37 +99,37 @@ class SwapCompiler:
         Used for validation and tracking.
         """
 
-        # ──────────────────────────────────────────────────────────
+        # ----------------------------------------------------------
         # 2. Initialize Storage Registers (Single copy per register)
-        # ──────────────────────────────────────────────────────────
+        # ----------------------------------------------------------
 
         self.memory_registers: List[StorageRegister] = [
             StorageRegister(n_qubits=n, reg_id=f"mem_{i}") for i in range(R)
         ]
 
-        # ──────────────────────────────────────────────────────────
+        # ----------------------------------------------------------
         # 3. Initialize Operation Register (Work Phase)
-        # ──────────────────────────────────────────────────────────
+        # ----------------------------------------------------------
 
         self.operation_register = OperationRegister(n_qubits=n, reg_id="work")
 
-        # ──────────────────────────────────────────────────────────
+        # ----------------------------------------------------------
         # 4. Initialize Functional Modules
-        # ──────────────────────────────────────────────────────────
+        # ----------------------------------------------------------
 
         self.work_phase = SystolicWorkPhase(name="sqtm_work_phase")
 
         # Cache for built registers (to avoid rebuilding)
         self._built_registers: Dict[str, QuantumRegister] = {}
 
-        state_label = "|0⟩" if initial_state == 0 else "|1⟩"
+        state_label = "|0>" if initial_state == 0 else "|1>"
         print(f"[Swap Compiler] Initialized: R={R}, n={n}, c_max={c_max}, t_max={t_max_ns} ns")
         print(f"[Swap Compiler] Fidelity target state: {state_label}")
         print(f"[Backend] {self.backend.__class__.__name__} with {self.qubit_mapper.n_qubits} qubits")
 
-    # ──────────────────────────────────────────────────────────────
+    # --------------------------------------------------------------
     # QUBIT ALLOCATION & PHYSICAL MAPPING
-    # ──────────────────────────────────────────────────────────────
+    # --------------------------------------------------------------
 
     def _get_initial_layout(self, qc: QuantumCircuit) -> List[int]:
 
@@ -141,22 +141,22 @@ class SwapCompiler:
                 raise RuntimeError(f"Qubit {qubit} not physically allocated! Cannot simulate.")
         return initial_layout
 
-    # ──────────────────────────────────────────────────────────────
+    # --------------------------------------------------------------
     # COMPILER MAIN METHOD: COMPILE WORKLOAD
-    # ──────────────────────────────────────────────────────────────
+    # --------------------------------------------------------------
 
     def compile_workload(self, workload: List[str]) -> QuantumCircuit:
 
-        # ──────────────────────────────────────────────────────────
+        # ----------------------------------------------------------
         # SEED INITIALIZATION - For reproducibility
-        # ──────────────────────────────────────────────────────────
+        # ----------------------------------------------------------
         random.seed(42)
         np.random.seed(42)
 
-        # ──────────────────────────────────────────────────────────
+        # ----------------------------------------------------------
         # Phase 0: Build register instances and allocate physical qubits
         # CRITICAL: Use chain topology to ensure fair comparison with SQTM
-        # ──────────────────────────────────────────────────────────
+        # ----------------------------------------------------------
 
         qc = QuantumCircuit()
 
@@ -166,35 +166,34 @@ class SwapCompiler:
             qc.add_register(qr_mem)
             self._built_registers[f"mem_{i}"] = qr_mem
 
-        qr_opreg = self.operation_register.build()
-        qc.add_register(qr_opreg)
-        self._built_registers["opreg"] = qr_opreg
+        qr_work = self.operation_register.build()
+        qc.add_register(qr_work)
+        self._built_registers["q_work"] = qr_work
 
-        # ──────────────────────────────────────────────────────────
-        # CHAIN TOPOLOGY ALLOCATION (SCALABLE LINEAR STRUCTURE)
-        # ──────────────────────────────────────────────────────────
-        # The registers form a linear chain for minimal routing SWAPs:
-        # OpReg — Mem_0 — Mem_1 — ... — Mem_(R-1)
-        # This ensures direct connectivity without routing SWAPs with optimization_level=0
-        # ──────────────────────────────────────────────────────────
+        # ----------------------------------------------------------
+        # PER-BIT TOPOLOGY ALLOCATION (QUBIT-CENTRIC)
+        # ----------------------------------------------------------
+        # Each qubit i of q_work connects to all mem_r_i registers
+        # Structure: Each bit i has q_work_i connected to mem_0_i, mem_1_i, ..., mem_(R-1)_i
+        # ----------------------------------------------------------
         
-        print("\n[Compilation] Allocating chain topology (OpReg—Mem_0—Mem_1—...)...")
+        print("\n[Compilation] Allocating per-bit topology (q_work[i] connects to all mem_r[i])...")
         
-        # Build chain configuration: OpReg first, then all memory registers
-        chain_config = [("opreg", self.n)]  # Operation register as first element
+        # Build chain configuration: q_work first, then all memory registers
+        chain_config = [("q_work", self.n)]  # Operation register as first element
         for i in range(self.R):
             chain_config.append((f"mem_{i}", self.n))
         
         total_qubits_needed = sum(size for _, size in chain_config)
         print(f"[Compilation] Total qubits needed: {total_qubits_needed}")
         
-        # Allocate the linear chain
+        # Allocate using per-bit topology
         allocation_map = self.qubit_mapper.allocate_chain_topology(chain_config)
         
         # Map logical qubits to physical qubits for all registers
         for reg_id, physical_qubits in allocation_map.items():
-            if reg_id == "opreg":
-                qr = self._built_registers["opreg"]
+            if reg_id == "q_work":
+                qr = self._built_registers["q_work"]
             else:
                 # mem_0, mem_1, ...
                 qr = self._built_registers[reg_id]
@@ -206,21 +205,21 @@ class SwapCompiler:
 
         print(f"[Compilation] Physical qubit mapping:")
         for reg_id, phys_qubits in allocation_map.items():
-            print(f"  {reg_id:12s} → {sorted(phys_qubits)}")
+            print(f"  {reg_id:12s} -> {sorted(phys_qubits)}")
 
         print(f"\n[Compilation] Total qubits allocated: {len(self.logical_to_physical_map)}")
 
-        # ──────────────────────────────────────────────────────────
+        # ----------------------------------------------------------
         # Phase 0b: Prepare initial quantum state
-        # ──────────────────────────────────────────────────────────
+        # ----------------------------------------------------------
         
         if self.initial_state == 1:
-            print("\n[Compilation] Preparing initial state |1...1⟩ (applying X to all qubits: memory + operation register)...")
-            # Apply X gates to ALL qubits (memory and operation register) to prepare |1...1⟩ state
+            print("\n[Compilation] Preparing initial state |1...1> (applying X to all qubits: memory + operation register)...")
+            # Apply X gates to ALL qubits (memory and operation register) to prepare |1...1> state
             # This ensures SWAPs don't affect the final state validation
             
             # Apply X to operation register
-            for qubit in qr_opreg:
+            for qubit in qr_work:
                 qc.x(qubit)
             
             # Apply X to all memory qubits
@@ -231,15 +230,15 @@ class SwapCompiler:
                     qc.x(qubit)
             
             qc.barrier()
-            print("[Compilation] Initial state |1...1⟩ prepared for all qubits")
+            print("[Compilation] Initial state |1...1> prepared for all qubits")
         else:
-            print("\n[Compilation] Using default initial state |0...0⟩ (no X gates applied)")
+            print("\n[Compilation] Using default initial state |0...0> (no X gates applied)")
 
         #print(f"\n[Compilation] Starting workload processing: {len(workload)} instructions")
 
-        # ──────────────────────────────────────────────────────────
+        # ----------------------------------------------------------
         # Phase 1: Process workload instructions
-        # ──────────────────────────────────────────────────────────
+        # ----------------------------------------------------------
 
         for instruction in workload:
             #print(f"  [Instruction] {instruction}")
@@ -255,7 +254,7 @@ class SwapCompiler:
                 # Apply native identity gate to operation register
                 # The thermal_relaxation_error attached to 'id' will be applied
                 for _ in range(num_units):
-                    qc.id(qr_opreg)
+                    qc.id(qr_work)
                 
                 # Optional: Also apply to inactive memory registers for complete wear-down modeling
                 for i in range(self.R):
@@ -277,8 +276,8 @@ class SwapCompiler:
                 # Get source register
                 source_reg = self._built_registers[f"mem_{logical_addr}"]
 
-                # Apply SWAP between source and OpReg
-                qc = self.work_phase.apply_swap(qc, source_reg, qr_opreg)
+                # Apply SWAP between source and work register
+                qc = self.work_phase.apply_swap(qc, source_reg, qr_work)
 
 
 
@@ -295,8 +294,8 @@ class SwapCompiler:
                 # Get destination register
                 dest_reg = self._built_registers[f"mem_{logical_addr}"]
 
-                # Apply SWAP between OpReg and destination
-                qc = self.work_phase.apply_swap(qc, qr_opreg, dest_reg)
+                # Apply SWAP between work register and destination
+                qc = self.work_phase.apply_swap(qc, qr_work, dest_reg)
 
 
 
@@ -308,16 +307,16 @@ class SwapCompiler:
         print(f"[Compilation] Workload processing complete")
         return qc
 
-    # ──────────────────────────────────────────────────────────────
+    # --------------------------------------------------------------
     # SIMULATION WITH NOISE
-    # ──────────────────────────────────────────────────────────────
+    # --------------------------------------------------------------
 
     def run_simulation(self, circuit: QuantumCircuit, shots: int = 1024) -> Dict[str, Any]:
 
 
-        # ──────────────────────────────────────────────────────────
+        # ----------------------------------------------------------
         # SEED SETUP FOR REPRODUCIBILITY
-        # ──────────────────────────────────────────────────────────
+        # ----------------------------------------------------------
         random.seed(42)
         np.random.seed(42)
 

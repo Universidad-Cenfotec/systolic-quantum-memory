@@ -4,7 +4,7 @@ import sys
 import numpy as np
 from scipy.optimize import curve_fit
 import matplotlib
-matplotlib.use("Agg")           # Non-interactive backend — output to file
+matplotlib.use("Agg")           # Non-interactive backend - output to file
 import matplotlib.pyplot as plt
 
 from qiskit import QuantumCircuit, transpile
@@ -38,7 +38,7 @@ class CMaxValidator:
    
     _TWO_QUBIT_GATE_CANDIDATES = ["ecr", "cx", "cz", "rzx"]
 
-    # ── Constructor ──────────────────────────────────────────────────────────
+    # -- Constructor ----------------------------------------------------------
 
     def __init__(self, N: int = 1) -> None:
        
@@ -62,13 +62,13 @@ class CMaxValidator:
         #    Kept as reference to compare against empirical r from RB.
         self.p_swap_teorico: float = 1.0 - (1.0 - self.cx_error) ** (3 * N)
 
-        # 5. RB fitting parameters — assigned in print_rb_results()
+        # 5. RB fitting parameters - assigned in print_rb_results()
         self.A_fit:     float = 0.0
         self.p_fit:     float = 0.0
         self.B_fit:     float = 0.0
         self.r_empirico: float = 0.0
 
-    # ── Extraction of calibration parameters ──────────────────────────────────
+    # -- Extraction of calibration parameters ----------------------------------
 
     def _extract_avg_cx_error(self) -> float:
        
@@ -95,7 +95,7 @@ class CMaxValidator:
 
 
 
-    # ── Empirical fidelity (noisy WorkPhase) ──────────────────────────────────
+    # -- Empirical fidelity (noisy WorkPhase) ----------------------------------
 
     def empirical_fidelity(self, n_swaps: int, shots: int = 4000) -> float:
        
@@ -113,27 +113,27 @@ class CMaxValidator:
         qc.measure(range(self.N), range(self.N))
         # print(qc.draw(output="text"))  # Commented: Unicode encoding issues on Windows
 
-        # ── Hardware-Aware Qubit Mapping ──────────────────────────────────────
-        # Use QubitMapper to guarantee chain topology allocation
-        # This ensures direct connectivity without routing SWAPs
-        # Chain structure: OpReg → Mem_0
+        # -- Hardware-Aware Qubit Mapping --------------------------------------
+        # Use QubitMapper to guarantee per-bit topology allocation
+        # Each qubit i of q_work connects to mem_i
+        # Structure per bit: q_work_i <- -> mem_0_i
         mapper = QubitMapper(self.backend)
         allocation = mapper.allocate_chain_topology(
             chain_config=[
-                ("opreg", self.N),    # Operation register
-                ("mem_0", self.N),    # Storage register
+                ("q_work", self.N),    # Operation register
+                ("mem_0", self.N),     # Storage register
             ]
         )
 
         # Build initial_layout: logical qubit -> physical qubit
         # Logical qubits 0..N-1 are Storage Register (mem_0)
-        # Logical qubits N..2N-1 are Operation Register (opreg)
+        # Logical qubits N..2N-1 are Operation Register (q_work)
         initial_layout: list[int] = [0] * (2 * self.N)
         for i in range(self.N):
             initial_layout[i] = allocation["mem_0"][i]          # Storage qubits
-            initial_layout[self.N + i] = allocation["opreg"][i] # Operation qubits
+            initial_layout[self.N + i] = allocation["q_work"][i] # Operation qubits
 
-        # ── Transpile with qubit mapping ──────────────────────────────────────
+        # -- Transpile with qubit mapping --------------------------------------
         sim  = AerSimulator(noise_model=self.noise_model)
         qc_t = transpile(qc, backend=self.backend, optimization_level=0, initial_layout=initial_layout)
         job  = sim.run(qc_t, shots=shots)
@@ -142,7 +142,7 @@ class CMaxValidator:
         zero_state = "0" * self.N
         return counts.get(zero_state, 0) / shots
 
-    # ── RB Characterization (Magesan) ─────────────────────────────────────────
+    # -- RB Characterization (Magesan) -----------------------------------------
 
     def run_rb_characterization(
         self,
@@ -161,7 +161,7 @@ class CMaxValidator:
         print(f"\n  Measuring F_emp(m) for m = {m_list} ...")
         print(f"  shots per point = {shots}\n")
 
-        # ── Empirical data collection ─────────────────────────────────────────
+        # -- Empirical data collection -----------------------------------------
         m_arr  = np.array(m_list, dtype=float)
         y_data: list[float] = []
 
@@ -172,7 +172,7 @@ class CMaxValidator:
 
         y_arr = np.array(y_data, dtype=float)
 
-        # ── curve_fit adjustment ──────────────────────────────────────────────
+        # -- curve_fit adjustment ----------------------------------------------
         p0     = [0.75, 0.90, self.B_ideal]
         bounds = ([0.0, 0.0, 0.0], [1.0, 1.0, 1.0])
 
@@ -190,13 +190,13 @@ class CMaxValidator:
         print(f"    p_fit = {popt[1]:.6f}")
         print(f"    B_fit = {popt[2]:.6f}")
 
-        # ── Plot (optional) ───────────────────────────────────────────────────
+        # -- Plot (optional) ---------------------------------------------------
         if plot_path is not None:
             self._plot_rb_curve(m_arr, y_arr, popt, plot_path)
 
         return popt
 
-    # ── RB results report ─────────────────────────────────────────────────────
+    # -- RB results report -----------------------------------------------------
 
     def print_rb_results(self, popt: np.ndarray) -> float:
        
@@ -243,7 +243,7 @@ class CMaxValidator:
         print("=" * 65)
         return self.r_empirico
 
-    # ── RB decay curve plot ───────────────────────────────────────────────────
+    # -- RB decay curve plot ---------------------------------------------------
 
     def _plot_rb_curve(
         self,
@@ -261,13 +261,13 @@ class CMaxValidator:
 
         fig, ax = plt.subplots(figsize=(8, 5))
         ax.scatter(m_arr, y_data, color="steelblue", zorder=5,
-                   label="F_emp(m) — noisy simulation")
+                   label="F_emp(m) - noisy simulation")
         ax.plot(m_dense, f_fit, color="crimson", linewidth=2,
                 label=f"Magesan fit: A={A_fit:.3f}, p={p_fit:.4f}, B={B_fit:.3f}")
         ax.axhline(y=B_fit, linestyle="--", color="gray", alpha=0.6,
                    label=f"Asymptote B = {B_fit:.3f}")
         ax.set_xlabel("m  (number of SWAPs)", fontsize=12)
-        ax.set_ylabel("F(m)  — base state survival", fontsize=12)
+        ax.set_ylabel("F(m)  - base state survival", fontsize=12)
         ax.set_title(f"SWAP Decay Curve (N={self.N}, d={self.d})", 
                      fontsize=14, fontweight='bold')
         ax.legend(fontsize=10)
@@ -279,7 +279,7 @@ class CMaxValidator:
         plt.close(fig)
         print(f"\n  [PLOT] RB curve saved to: {path}")
 
-    # ── Predicted fidelity from Magesan model ─────────────────────────────────
+    # -- Predicted fidelity from Magesan model ---------------------------------
 
     def theoretical_fidelity(self, n_swaps: int) -> float:
       
@@ -287,7 +287,7 @@ class CMaxValidator:
             raise ValueError(f"n_swaps must be >= 0, received: {n_swaps}")
         return self.A_fit * self.p_fit ** n_swaps + self.B_fit
 
-    # ── Extrapolation validation (n vs 2n) ─────────────────────────────────────
+    # -- Extrapolation validation (n vs 2n) -------------------------------------
 
     def run_extrapolation_test(self, n: int = 10) -> None:
         
@@ -307,7 +307,7 @@ class CMaxValidator:
 
         print("=" * 65)
 
-    # ── Final C_MAX calculation (Magesan model) ───────────────────────────────
+    # -- Final C_MAX calculation (Magesan model) -------------------------------
 
     def calculate_final_cmax(self, target_fidelity: float = 0.90) -> int:
        
@@ -366,20 +366,20 @@ if __name__ == "__main__":
     N_qubits = 3
     validator = CMaxValidator(N=N_qubits)
 
-    # ── Phase B.1: Complete RB characterization ───────────────────────────────
+    # -- Phase B.1: Complete RB characterization -------------------------------
     m_list = [0, 1, 2, 4, 6, 8, 10, 15, 20, 25, 30, 40, 50, 60, 80, 100]
     #m_list = [2,4,8]
     popt = validator.run_rb_characterization(m_list, shots=4000, plot_path = "results/rb_decay_curve_swap n="+ str(N_qubits) +".png")
 
-    # ── Phase B.2: Print results and validate model ───────────────────────────
+    # -- Phase B.2: Print results and validate model ---------------------------
     r_emp = validator.print_rb_results(popt)
 
-    # ── Phase B.3: Calculate C_MAX with target fidelity ──────────────────────
+    # -- Phase B.3: Calculate C_MAX with target fidelity ----------------------
     c_max = validator.calculate_final_cmax(target_fidelity=0.75)
     print(f"\n[FINAL RESULT]  C_MAX = {c_max} SWAPs  "
           f"(r_emp = {r_emp:.4f},  p_swap_theory = {validator.p_swap_teorico:.4f})")
 
-    # ── Phase B.4: Extrapolation validation (Magesan model vs empirical) ──────
+    # -- Phase B.4: Extrapolation validation (Magesan model vs empirical) ------
     # Change 'x' to compare the fitted model against a new measurement.
     x = 15
     validator.run_extrapolation_test(n=x)

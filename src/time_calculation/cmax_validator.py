@@ -4,7 +4,7 @@ import sys
 import numpy as np
 from scipy.optimize import curve_fit
 import matplotlib
-matplotlib.use("Agg")           # Non-interactive backend — output to file
+matplotlib.use("Agg")           # Non-interactive backend - output to file
 import matplotlib.pyplot as plt
 
 from typing import cast
@@ -43,7 +43,7 @@ class CMaxValidator:
     # IBM Kyiv (Eagle r3) uses ECR natively; other platforms use CX.
     _TWO_QUBIT_GATE_CANDIDATES = ["ecr", "cx", "cz", "rzx"]
 
-    # ── Constructor ──────────────────────────────────────────────────────────
+    # -- Constructor ----------------------------------------------------------
 
     def __init__(self, N: int = 1) -> None:
       
@@ -67,13 +67,13 @@ class CMaxValidator:
         #    Kept as reference to compare against empirical r from RB.
         self.p_swap_teorico: float = 1.0 - (1.0 - self.cx_error) ** (3 * N)
 
-        # 5. RB fitting parameters — assigned in print_rb_results()
+        # 5. RB fitting parameters - assigned in print_rb_results()
         self.A_fit:     float = 0.0
         self.p_fit:     float = 0.0
         self.B_fit:     float = 0.0
         self.r_empirico: float = 0.0
 
-    # ── Extraction of calibration parameters ──────────────────────────────────
+    # -- Extraction of calibration parameters ----------------------------------
 
     def _extract_avg_cx_error(self) -> float:
         
@@ -98,50 +98,53 @@ class CMaxValidator:
             f"Available gates: {sorted(gate_errors.keys())}."
         )
 
-    # ── Physical chain allocation via QubitMapper (NEW UNIFIED APPROACH) ──────
+    # -- Physical chain allocation via QubitMapper (NEW UNIFIED APPROACH) ------
 
     def _get_physical_chains(self) -> list[tuple[int, int, int, int]]:
         """
         Find N disjoint chains of exactly 4 qubits each using QubitMapper.
         
-        Each chain is a path: S — O — LA — LB (all must be connected by edges).
-        This now delegates to QubitMapper.allocate_chain_topology() for scalability.
+        Uses SQTM per-bit topology where:
+        - q_work[i]: operation qubit for bit i
+        - mem_orig_0[i]: storage qubit for bit i
+        - tele_ancilla_0[i]: link alice qubit for bit i
+        - mem_backup_0[i]: link bob qubit for bit i
         
         Returns: list of tuples (storage, operation, link_alice, link_bob)
         """
         # Create an instance of QubitMapper from the backend
         mapper = QubitMapper(self.backend)
         
-        # Build a single long chain for all registers
-        # Chain structure: S_0 — O_0 — LA_0 — LB_0 — S_1 — O_1 — LA_1 — LB_1 — ...
-        chain_config = []
-        for i in range(self.N):
-            chain_config.append((f"S_{i}", 1))
-            chain_config.append((f"O_{i}", 1))
-            chain_config.append((f"LA_{i}", 1))
-            chain_config.append((f"LB_{i}", 1))
+        # Build chain config for SQTM with 1 register (R=1)
+        # This will use allocate_sqtm_per_bit_topology internally
+        chain_config = [
+            ("q_work", self.N),           # Operation register
+            ("mem_orig_0", self.N),       # Storage register (in mem_orig)
+            ("mem_backup_0", self.N),     # Link Bob (in mem_backup)
+            ("tele_ancilla_0", self.N),   # Link Alice (in tele_ancilla)
+        ]
         
-        # Allocate the unified chain
+        # Allocate using SQTM per-bit topology
         allocation = mapper.allocate_chain_topology(chain_config)
         
-        # Convert allocation back to original tuple format
+        # Convert allocation back to tuple format: (storage, operation, link_alice, link_bob)
         chains = []
         for i in range(self.N):
-            s_qubit = allocation[f"S_{i}"][0]
-            o_qubit = allocation[f"O_{i}"][0]
-            la_qubit = allocation[f"LA_{i}"][0]
-            lb_qubit = allocation[f"LB_{i}"][0]
+            o_qubit = allocation["q_work"][i]
+            s_qubit = allocation["mem_orig_0"][i]
+            la_qubit = allocation["tele_ancilla_0"][i]
+            lb_qubit = allocation["mem_backup_0"][i]
             chains.append((s_qubit, o_qubit, la_qubit, lb_qubit))
         
         return chains
-    # ── Empirical fidelity with 4-register teleportation protocol ────────────
+    # -- Empirical fidelity with 4-register teleportation protocol ------------
 
     def empirical_fidelity(self, m_swaps: int, shots: int = 4000) -> float:
        
         if m_swaps < 0:
             raise ValueError(f"m_swaps must be >= 0, received: {m_swaps}")
 
-        # ── Build 4-register quantum circuit ──────────────────────────────────
+        # -- Build 4-register quantum circuit ----------------------------------
         reg_s = QuantumRegister(self.N, name="S")      # Storage
         reg_o = QuantumRegister(self.N, name="O")      # Operation
         reg_la = QuantumRegister(self.N, name="LA")    # Link Alice
@@ -154,13 +157,13 @@ class CMaxValidator:
         
         qc = QuantumCircuit(reg_s, reg_o, reg_la, reg_lb, cr_s, cr_o, cr_la, cr_lb)
 
-        # ────────────────────────────────────────────────────────────────────
-        # PASO 1: PREPARATION (all |0⟩) — implicit by circuit initialization
-        # ────────────────────────────────────────────────────────────────────
+        # --------------------------------------------------------------------
+        # PASO 1: PREPARATION (all |0>) - implicit by circuit initialization
+        # --------------------------------------------------------------------
         
-        # ────────────────────────────────────────────────────────────────────
-        # PASO 2: m SWAP CYCLES (Storage ↔ Operation)
-        # ────────────────────────────────────────────────────────────────────
+        # --------------------------------------------------------------------
+        # PASO 2: m SWAP CYCLES (Storage ? Operation)
+        # --------------------------------------------------------------------
         
         
         for _ in range(m_swaps):
@@ -175,10 +178,10 @@ class CMaxValidator:
             
             qc.barrier()  # Prevent inter-SWAP optimization
 
-        # ────────────────────────────────────────────────────────────────────
-        # ────────────────────────────────────────────────────────────────────
-        # PASO 3: TELEPORTATION PROTOCOL (S → LA → LB)
-        # ────────────────────────────────────────────────────────────────────
+        # --------------------------------------------------------------------
+        # --------------------------------------------------------------------
+        # PASO 3: TELEPORTATION PROTOCOL (S -> LA -> LB)
+        # --------------------------------------------------------------------
         
         # 3a. EPR PAIR GENERATION (Bell pair creation between LA and LB)
         for i in range(self.N):
@@ -222,9 +225,9 @@ class CMaxValidator:
         
         qc.barrier()
         
-        # ────────────────────────────────────────────────────────────────────
+        # --------------------------------------------------------------------
         # PASO 4: FINAL MEASUREMENT (all registers for completeness)
-        # ────────────────────────────────────────────────────────────────────
+        # --------------------------------------------------------------------
         
         # Measure Operation register (part of complete protocol)
         for i in range(self.N):
@@ -234,9 +237,9 @@ class CMaxValidator:
         for i in range(self.N):
             qc.measure(reg_lb[i], cr_lb[i])
 
-# ────────────────────────────────────────────────────────────────────
+# --------------------------------------------------------------------
         # HARDWARE-AWARE QUBIT MAPPING
-        # ────────────────────────────────────────────────────────────────────
+        # --------------------------------------------------------------------
         chains = self._get_physical_chains()
         
         initial_layout = [0] * (4 * self.N)
@@ -246,18 +249,18 @@ class CMaxValidator:
             initial_layout[2 * self.N + i] = phys_la             # Link Alice
             initial_layout[3 * self.N + i] = phys_lb             # Link Bob
             
-        # ────────────────────────────────────────────────────────────────────
+        # --------------------------------------------------------------------
         # TRANSPILE AND SIMULATE
-        # ────────────────────────────────────────────────────────────────────
+        # --------------------------------------------------------------------
         
         sim  = AerSimulator(noise_model=self.noise_model)
         qc_t = transpile(qc, backend=self.backend, optimization_level=0, initial_layout=initial_layout)
         job  = sim.run(qc_t, shots=shots)
         counts: dict[str, int] = job.result().get_counts()
 
-# ────────────────────────────────────────────────────────────────────
+# --------------------------------------------------------------------
         # DIRECT VERIFICATION OF TELEPORTED STATUS
-        # ────────────────────────────────────────────────────────────────────
+        # --------------------------------------------------------------------
         
         fidelity_count = 0
         target_state = '0' * self.N
@@ -266,7 +269,7 @@ class CMaxValidator:
             bitstring_clean = bitstring.replace(' ', '')
             bitstring_rev = bitstring_clean[::-1]  
             
-            # Extraer únicamente los bits del destino final (Link Bob)
+            # Extraer ?nicamente los bits del destino final (Link Bob)
             lb_bits = bitstring_rev[3*self.N : 4*self.N]
             
             if lb_bits == target_state:
@@ -274,7 +277,7 @@ class CMaxValidator:
                 
         return fidelity_count / shots
 
-    # ── RB Characterization (Magesan) ─────────────────────────────────────────
+    # -- RB Characterization (Magesan) -----------------------------------------
 
     def run_rb_characterization(
         self,
@@ -296,7 +299,7 @@ class CMaxValidator:
         print(f"\n  Measuring F_emp(m) for m = {m_list} with teleportation protocol...")
         print(f"  shots per point = {shots}\n")
 
-        # ── Empirical data collection ─────────────────────────────────────────
+        # -- Empirical data collection -----------------------------------------
         m_arr  = np.array(m_list, dtype=float)
         y_data: list[float] = []
 
@@ -307,7 +310,7 @@ class CMaxValidator:
 
         y_arr = np.array(y_data, dtype=float)
 
-        # ── curve_fit adjustment ──────────────────────────────────────────────
+        # -- curve_fit adjustment ----------------------------------------------
         p0     = [0.75, 0.90, self.B_ideal]
         bounds = ([0.0, 0.0, 0.0], [1.0, 1.0, 1.0])
 
@@ -325,13 +328,13 @@ class CMaxValidator:
         print(f"    p_fit = {popt[1]:.6f}")
         print(f"    B_fit = {popt[2]:.6f}")
 
-        # ── Plot (optional) ───────────────────────────────────────────────────
+        # -- Plot (optional) ---------------------------------------------------
         if plot_path is not None:
             self._plot_rb_curve(m_arr, y_arr, popt, plot_path)
 
         return popt
 
-    # ── RB results report ─────────────────────────────────────────────────────
+    # -- RB results report -----------------------------------------------------
 
     def print_rb_results(self, popt: np.ndarray) -> float:
        
@@ -386,7 +389,7 @@ class CMaxValidator:
         print("=" * 75)
         return self.r_empirico
 
-    # ── RB decay curve plot ───────────────────────────────────────────────────
+    # -- RB decay curve plot ---------------------------------------------------
 
     def _plot_rb_curve(
         self,
@@ -404,13 +407,13 @@ class CMaxValidator:
 
         fig, ax = plt.subplots(figsize=(10, 6))
         ax.scatter(m_arr, y_data, color="steelblue", s=100, zorder=5,
-                   label="F_emp(m) — 4-register teleportation protocol")
+                   label="F_emp(m) - 4-register teleportation protocol")
         ax.plot(m_dense, f_fit, color="crimson", linewidth=2.5,
                 label=f"Magesan fit: A={A_fit:.3f}, p={p_fit:.4f}, B={B_fit:.3f}")
         ax.axhline(y=B_fit, linestyle="--", color="gray", alpha=0.6,
                    label=f"Asymptote B = {B_fit:.3f}")
         ax.set_xlabel("m  (SWAP cycles)", fontsize=13, fontweight='bold')
-        ax.set_ylabel("F(m)  — survival probability", fontsize=13, fontweight='bold')
+        ax.set_ylabel("F(m)  - survival probability", fontsize=13, fontweight='bold')
         ax.set_title(f"SQTM RB Decay Curve with Teleportation (N={self.N}, d={self.d})", 
                      fontsize=14, fontweight='bold')
         ax.legend(fontsize=11, loc='upper right')
@@ -422,7 +425,7 @@ class CMaxValidator:
         plt.close(fig)
         print(f"\n  [PLOT] RB curve saved to: {path}")
 
-    # ── Predicted fidelity from Magesan model ─────────────────────────────────
+    # -- Predicted fidelity from Magesan model ---------------------------------
 
     def theoretical_fidelity(self, n_swaps: int) -> float:
         
@@ -430,7 +433,7 @@ class CMaxValidator:
             raise ValueError(f"n_swaps must be >= 0, received: {n_swaps}")
         return self.A_fit * self.p_fit ** n_swaps + self.B_fit
 
-    # ── Extrapolation validation (n vs 2n) ─────────────────────────────────────
+    # -- Extrapolation validation (n vs 2n) -------------------------------------
 
     def run_extrapolation_test(self, n: int = 10) -> None:
        
@@ -456,7 +459,7 @@ class CMaxValidator:
 
         print("=" * 75)
 
-    # ── Final C_MAX calculation (Magesan model with teleportation) ───────────
+    # -- Final C_MAX calculation (Magesan model with teleportation) -----------
 
     def calculate_final_cmax(self, target_fidelity: float = 0.90) -> int:
        
@@ -510,26 +513,26 @@ class CMaxValidator:
 # =============================================================================
 
 if __name__ == "__main__":
-    # ── DEFINE THE ARCHITECTURE (N = Word width per register) ─────────────────
+    # -- DEFINE THE ARCHITECTURE (N = Word width per register) -----------------
     N_qubits = 1
     validator = CMaxValidator(N=N_qubits)
     
 
-    # ── Phase B.1: Complete RB characterization with teleportation ────────────
+    # -- Phase B.1: Complete RB characterization with teleportation ------------
     m_list = [0, 1, 2, 4, 6, 8, 10, 15, 20, 25, 30, 40, 50, 60, 80, 100]
     popt = validator.run_rb_characterization(m_list, shots=4000, plot_path = "results/rb_decay_curve n="+ str(N_qubits) +".png")
 
-    # ── Phase B.2: Print results and validate model ───────────────────────────
+    # -- Phase B.2: Print results and validate model ---------------------------
     r_emp = validator.print_rb_results(popt)
 
-    # ── Phase B.3: Calculate C_MAX with target fidelity ──────────────────────
+    # -- Phase B.3: Calculate C_MAX with target fidelity ----------------------
   
     c_max = validator.calculate_final_cmax(target_fidelity=0.75)
     print(f"\n[FINAL RESULT]  C_MAX = {c_max} SWAPs  "
           f"(r_emp = {r_emp:.4f},  p_swap_theory = {validator.p_swap_teorico:.4f})")
 
-    # ── Phase B.4: Extrapolation validation (optional) ───────────────────────
-    # ── Phase B.4: Extrapolation validation (Magesan model vs empirical) ──────
+    # -- Phase B.4: Extrapolation validation (optional) -----------------------
+    # -- Phase B.4: Extrapolation validation (Magesan model vs empirical) ------
     # Change 'x' to compare the fitted model against a new measurement.
     x = 15
     validator.run_extrapolation_test(n=x)
