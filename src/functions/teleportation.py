@@ -111,8 +111,6 @@ class SystolicTeleportation:
             # ────────────────────────────────────────────────────────
             # 2a. BELL CHANNEL GENERATION (between link_q and dest_q)
             # ────────────────────────────────────────────────────────
-            qc.reset(link_q)
-            qc.reset(dest_q)
             qc.h(link_q)
             qc.cx(link_q, dest_q)
             
@@ -147,6 +145,8 @@ class SystolicTeleportation:
             # 2e. ACTIVE RESET (Clean source and ancilla, NOT destination)
             # ────────────────────────────────────────────────────────
             
+            qc.reset(link_q)
+            qc.reset(source_q)
         
         return qc
 
