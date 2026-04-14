@@ -147,7 +147,7 @@ class TmaxValidator:
             plot_path: Path to save plot
         """
         print("=" * 70)
-        print("  SQTM -- ID Gate Sweep: Measuring T1/T2 Decay")
+        print("  SQM -- ID Gate Sweep: Measuring T1/T2 Decay")
         print("=" * 70)
         print(f"\n  N_qubits    = {self.N}")
         print(f"  T1          = {self.T1_ns / 1000:.1f} µs")
@@ -329,11 +329,11 @@ class TmaxValidator:
 if __name__ == "__main__":
     
     # =========================================================================
-    # SQTM Configuration: 10th Percentile (Worst-Case) Parameters
+    # SQM Configuration: 10th Percentile (Worst-Case) Parameters
     # =========================================================================
     
     print("\n" + "=" * 70)
-    print("  SQTM Tmax Validator: Worst-Case Coherence Analysis")
+    print("  SQM Tmax Validator: Worst-Case Coherence Analysis")
     print("=" * 70)
     print("\n  Configuration:")
     print("    Target Fidelity:    0.75")

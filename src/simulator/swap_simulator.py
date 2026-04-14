@@ -1,5 +1,5 @@
 # ============================================================
-# SQTM Research Project - Main Simulator & Compiler
+# SQM Research Project - Main Simulator & Compiler
 # Systolic Quantum Teleportation Memory
 # Authors: Danny Valerio-Ram?rez & Santiago N??ez-Corrales
 # Role: Quantum Compiler Architect (Senior)
@@ -61,8 +61,8 @@ class SwapCompiler:
         # 1b. Create thermal relaxation error linked to 'id' gate
         # ----------------------------------------------------------
         # T1 and T2 times for FakeKyiv (typical NISQ parameters)
-        t1_ns = 150_000  # 150 ?s
-        t2_ns = 100_000  # 100 ?s
+        t1_ns = 149_149  # 150 ?s
+        t2_ns = 38_194  # 100 ?s
         self.time_idle_ns = 7000  # One IDLE unit = 700 ns
         
         # Create thermal relaxation error for the idle period
@@ -117,7 +117,7 @@ class SwapCompiler:
         # 4. Initialize Functional Modules
         # ----------------------------------------------------------
 
-        self.work_phase = SystolicWorkPhase(name="sqtm_work_phase")
+        self.work_phase = SystolicWorkPhase(name="sqm_work_phase")
 
         # Cache for built registers (to avoid rebuilding)
         self._built_registers: Dict[str, QuantumRegister] = {}
@@ -126,6 +126,25 @@ class SwapCompiler:
         print(f"[Swap Compiler] Initialized: R={R}, n={n}, c_max={c_max}, t_max={t_max_ns} ns")
         print(f"[Swap Compiler] Fidelity target state: {state_label}")
         print(f"[Backend] {self.backend.__class__.__name__} with {self.qubit_mapper.n_qubits} qubits")
+
+    # --------------------------------------------------------------
+    # MEASUREMENT OUTCOME PARSING (Unified Parser)
+    # --------------------------------------------------------------
+
+    @staticmethod
+    def _parse_measurement_outcome(outcome: str) -> str:
+        """
+        Parse measurement outcome string from Qiskit, handling multiple registers.
+        
+        In SQM: outcome contains multiple spaces (e.g., "data_bits bell_bits")
+        In SWAP: outcome contains single register with no spaces
+        
+        Returns: First register (measurement bits) after cleaning
+        """
+        cleaned = outcome.strip()
+        # If multiple registers, extract first one; otherwise return as-is
+        registers = cleaned.split()
+        return registers[0] if registers else cleaned
 
     # --------------------------------------------------------------
     # QUBIT ALLOCATION & PHYSICAL MAPPING
@@ -155,7 +174,7 @@ class SwapCompiler:
 
         # ----------------------------------------------------------
         # Phase 0: Build register instances and allocate physical qubits
-        # CRITICAL: Use chain topology to ensure fair comparison with SQTM
+        # CRITICAL: Use chain topology to ensure fair comparison with SQM
         # ----------------------------------------------------------
 
         qc = QuantumCircuit()
@@ -349,7 +368,7 @@ class SwapCompiler:
             # print(qc_measured.draw(output="text"))
             print("[Noise Model] Extracting noise characteristics...")
             
-            # Initialize simulator with MPS method and fixed seed (matching SQTM)
+            # Initialize simulator with MPS method and fixed seed (matching SQM)
             simulator = AerSimulator(
                 noise_model=self.noise_model,
                 method='matrix_product_state',
@@ -378,8 +397,8 @@ class SwapCompiler:
             target_state = ('1' * target_state_bits) if self.initial_state == 1 else ('0' * target_state_bits)
             
             for outcome, count in counts.items():
-                # The outcome string contains all measured bits (no spaces since single register)
-                measured_bits = outcome.strip()
+                # Parse measurement outcome (unified parser for multiple registers)
+                measured_bits = self._parse_measurement_outcome(outcome)
                 if measured_bits == target_state:
                     fidelity_count += count
             

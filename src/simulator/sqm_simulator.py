@@ -153,6 +153,25 @@ class SQMCompiler:
     # --------------------------------------------------------------
     # QUBIT ALLOCATION & PHYSICAL MAPPING
     # --------------------------------------------------------------
+    # MEASUREMENT OUTCOME PARSING (Unified Parser)
+    # --------------------------------------------------------------
+
+    @staticmethod
+    def _parse_measurement_outcome(outcome: str) -> str:
+        """
+        Parse measurement outcome string from Qiskit, handling multiple registers.
+        
+        In SQM: outcome contains multiple spaces (e.g., "data_bits bell_bits")
+        In SWAP: outcome contains single register with no spaces
+        
+        Returns: First register (measurement bits) after cleaning
+        """
+        cleaned = outcome.strip()
+        # If multiple registers, extract first one; otherwise return as-is
+        registers = cleaned.split()
+        return registers[0] if registers else cleaned
+
+    # --------------------------------------------------------------
 
     def _get_initial_layout(self, qc: QuantumCircuit) -> List[int]:
 
@@ -294,7 +313,7 @@ class SQMCompiler:
                 qc.barrier()  # Prevent inter-SWAP optimization
                 for logical_addr in range(self.R):    
                     self._check_and_apply_tele_refresh(qc, logical_addr, gate_cost=0,
-                    time_dt=self.time_idle_ns)
+                    time_dt=time_ns)
                 
             elif instruction.startswith("READ_"):
                 # READ instruction: READ_ij where ij is binary address
@@ -506,9 +525,8 @@ class SQMCompiler:
             target_state = ('1' * target_state_bits) if self.initial_state == 1 else ('0' * target_state_bits)
             
             for outcome, count in counts.items():
-                # The outcome string contains all measured bits (no spaces since single register)
-                separated_registers = outcome.split()
-                final_meas_bits = separated_registers[0]
+                # Parse measurement outcome (unified parser for multiple registers)
+                final_meas_bits = self._parse_measurement_outcome(outcome)
             
                 if final_meas_bits == target_state:
                     fidelity_count += count

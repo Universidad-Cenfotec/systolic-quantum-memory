@@ -38,7 +38,7 @@ SQM/
 │   ├── teleportation_test.py             # End-to-end teleportation
 │   └── work_phase_test.py                # Work phase simulation
 ├── Contexto/                             # Documentation & research
-│   ├── SQTM_Paper.md
+│   ├── SQM_Paper.md
 │   ├── Systolic_Quantum_Teleportation_Memory.txt
 │   └── Literatura/
 ├── data/                                 # Calibration data

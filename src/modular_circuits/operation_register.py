@@ -4,7 +4,7 @@ from qiskit.circuit import QuantumRegister
 class OperationRegister:
     """Registro Operacional para la Systolic Quantum Teleportation Memory.
 
-    Representa el área de trabajo activa (CPU cuántica) del sistema SQTM.
+    Representa el área de trabajo activa (CPU cuántica) del sistema SQM.
     Soporta múltiples registros operacionales identificados por reg_id.
     """
 

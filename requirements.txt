@@ -1,5 +1,5 @@
 # ============================================================
-# SQTM Research Project — Dependencies
+# SQM Research Project — Dependencies
 # Systolic Quantum Teleportation Memory
 # Authors: Danny Valerio-Ramírez & Santiago Núñez-Corrales
 # Environment: Python 3.11 | Generated: 2026-03-31

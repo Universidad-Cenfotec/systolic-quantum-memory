@@ -1,3 +1,3 @@
 # src/time_calculation/__init__.py
-# Systolic Quantum Teleportation Memory (SQTM)
+# Systolic Quantum Memory (SQM)
 # Time Calculation & C_MAX Validation Module

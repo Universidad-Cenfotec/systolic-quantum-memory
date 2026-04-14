@@ -106,7 +106,7 @@ class CMaxValidator:
         """
         Find N disjoint chains of exactly 4 qubits each using QubitMapper.
         
-        Uses SQTM per-bit topology where:
+        Uses SQM per-bit topology where:
         - q_work[i]: operation qubit for bit i
         - mem_orig_0[i]: storage qubit for bit i
         - tele_ancilla_0[i]: link alice qubit for bit i
@@ -117,8 +117,8 @@ class CMaxValidator:
         # Create an instance of QubitMapper from the backend
         mapper = QubitMapper(self.backend)
         
-        # Build chain config for SQTM with 1 register (R=1)
-        # This will use allocate_sqtm_per_bit_topology internally
+        # Build chain config for SQM with 1 register (R=1)
+        # This will use allocate_sqm_per_bit_topology internally
         chain_config = [
             ("q_work", self.N),           # Operation register
             ("mem_orig_0", self.N),       # Storage register (in mem_orig)
@@ -126,7 +126,7 @@ class CMaxValidator:
             ("tele_ancilla_0", self.N),   # Link Alice (in tele_ancilla)
         ]
         
-        # Allocate using SQTM per-bit topology
+        # Allocate using SQM per-bit topology
         allocation = mapper.allocate_chain_topology(chain_config)
         
         # Convert allocation back to tuple format: (storage, operation, link_alice, link_bob)
@@ -213,17 +213,15 @@ class CMaxValidator:
         for i in range(self.N):
             # If LA[i] measured as 1, apply X to LB[i]
             # (corrects for phase flip in Bell measurement)
-            try:
-                with qc.if_test((cast(Clbit, cr_la[i]), 1)):
-                    qc.x(reg_lb[i])
-                
-                # If S[i] measured as 1, apply Z to LB[i]
-                # (corrects for bit flip in Bell measurement)
-                with qc.if_test((cast(Clbit, cr_s[i]), 1)):
-                    qc.z(reg_lb[i])
-            except (NotImplementedError, ValueError):
-                # If AerSimulator doesn't support if_test, skip and rely on post-selection
-                pass
+
+            with qc.if_test((cast(Clbit, cr_la[i]), 1)):
+                qc.x(reg_lb[i])
+            
+            # If S[i] measured as 1, apply Z to LB[i]
+            # (corrects for bit flip in Bell measurement)
+            with qc.if_test((cast(Clbit, cr_s[i]), 1)):
+                qc.z(reg_lb[i])
+  
         
         qc.barrier()
         
@@ -289,7 +287,7 @@ class CMaxValidator:
     ) -> np.ndarray:
 
         print("=" * 75)
-        print("  SQTM -- Phase B: RB Characterization with 4-Register Teleportation")
+        print("  SQM -- Phase B: RB Characterization with 4-Register Teleportation")
         print("=" * 75)
         print(f"\n  Backend      : {self.backend.name}")
         print(f"  Architecture : 4 registers * {self.N} qubits = {4*self.N} total qubits")
@@ -362,7 +360,7 @@ class CMaxValidator:
             writer = csv.writer(f)
             
             # Write header with metadata
-            writer.writerow(["SQTM RB Characterization Results"])
+            writer.writerow(["SQM RB Characterization Results"])
             writer.writerow(["Timestamp", datetime.now().isoformat()])
             writer.writerow(["Backend", self.backend.name])
             writer.writerow(["Architecture", f"4 registers * {self.N} qubits = {4*self.N} total qubits"])
@@ -397,7 +395,7 @@ class CMaxValidator:
         self.r_empirico = ((self.d - 1) * (1.0 - self.p_fit)) / self.d
 
         print("\n" + "=" * 75)
-        print("  SQTM -- RB Fit Results (Magesan 2012 + Teleportation Protocol)")
+        print("  SQM -- RB Fit Results (Magesan 2012 + Teleportation Protocol)")
         print("=" * 75)
 
         print(f"\n  Model: F(m) = A * p^m + B")
@@ -468,7 +466,7 @@ class CMaxValidator:
                    label=f"Asymptote B = {B_fit:.3f}")
         ax.set_xlabel("m  (SWAP cycles)", fontsize=13, fontweight='bold')
         ax.set_ylabel("F(m)  - survival probability", fontsize=13, fontweight='bold')
-        ax.set_title(f"SQTM RB Decay Curve with Teleportation (N={self.N}, d={self.d})", 
+        ax.set_title(f"SQM RB Decay Curve with Teleportation (N={self.N}, d={self.d})", 
                      fontsize=14, fontweight='bold')
         ax.legend(fontsize=11, loc='upper right')
         ax.grid(alpha=0.3, linestyle='--')
@@ -493,7 +491,7 @@ class CMaxValidator:
        
         gate_label = self.native_2q_gate.upper()
         print("=" * 75)
-        print(f"  SQTM -- Phase B.4: RB Extrapolation Validation (n={n})")
+        print(f"  SQM -- Phase B.4: RB Extrapolation Validation (n={n})")
         print("=" * 75)
         print(f"\n  Architecture: 4 registers * {self.N} qubits = {4*self.N} total qubits")
         print(f"  p_{gate_label.lower()} = {self.cx_error:.6f}  |  "
@@ -539,7 +537,7 @@ class CMaxValidator:
         c_max = math.floor(math.log(ratio) / math.log(self.p_fit))
 
         print("\n" + "=" * 65)
-        print("  SQTM -- Final C_MAX Calculation (Magesan RB Model)")
+        print("  SQM -- Final C_MAX Calculation (Magesan RB Model)")
         print("=" * 65)
         print(f"  RB fitting parameters:")
         print(f"    A_fit  = {self.A_fit:.6f}  (SPAM contrast)")

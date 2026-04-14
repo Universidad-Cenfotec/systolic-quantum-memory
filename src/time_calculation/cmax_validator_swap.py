@@ -152,7 +152,7 @@ class CMaxValidator:
     ) -> np.ndarray:
        
         print("=" * 65)
-        print("  SQTM -- Phase B: RB Characterization (Magesan Model)")
+        print("  SQM -- Phase B: RB Characterization (Magesan Model)")
         print("=" * 65)
         print(f"\n  Backend      : {self.backend.name}")
         print(f"  Native gate  : {self.native_2q_gate.upper()}")
@@ -222,7 +222,7 @@ class CMaxValidator:
             writer = csv.writer(f)
             
             # Write header with metadata
-            writer.writerow(["SQTM RB Characterization Results (SWAP protocol)"])
+            writer.writerow(["SQM RB Characterization Results (SWAP protocol)"])
             writer.writerow(["Timestamp", datetime.now().isoformat()])
             writer.writerow(["Backend", self.backend.name])
             writer.writerow(["Architecture", f"2 registers * {self.N} qubits = {2*self.N} total qubits"])
@@ -257,7 +257,7 @@ class CMaxValidator:
         self.r_empirico = ((self.d - 1) * (1.0 - self.p_fit)) / self.d
 
         print("\n" + "=" * 65)
-        print("  SQTM -- RB Fit Results (Magesan 2012)")
+        print("  SQM -- RB Fit Results (Magesan 2012)")
         print("=" * 65)
 
         print(f"\n  Model: F(m) = A * p^m + B")
@@ -345,7 +345,7 @@ class CMaxValidator:
         
         gate_label = self.native_2q_gate.upper()
         print("=" * 65)
-        print(f"  SQTM -- Phase B.4: Extrapolation Validation (n={n})")
+        print(f"  SQM -- Phase B.4: Extrapolation Validation (n={n})")
         print("=" * 65)
         print(f"\n  p_{gate_label.lower()} = {self.cx_error:.6f}  |  "
               f"r_empirical = {self.r_empirico/(3*self.N):.6f}")
@@ -385,7 +385,7 @@ class CMaxValidator:
         c_max = math.floor(math.log(ratio) / math.log(self.p_fit))
 
         print("\n" + "=" * 65)
-        print("  SQTM -- Final C_MAX Calculation (Magesan RB Model)")
+        print("  SQM -- Final C_MAX Calculation (Magesan RB Model)")
         print("=" * 65)
         print(f"  RB fitting parameters:")
         print(f"    A_fit  = {self.A_fit:.6f}  (SPAM contrast)")

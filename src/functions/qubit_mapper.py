@@ -1,5 +1,5 @@
 ﻿# ============================================================
-# SQTM Research Project - Qubit Mapper (Hardware-Aware)
+# SQM Research Project - Qubit Mapper (Hardware-Aware)
 # Authors: Danny Valerio-Ramirez & Santiago Nunez-Corrales
 # ============================================================
 
@@ -44,7 +44,7 @@ class QubitMapper:
         return list(visited) if len(visited) == size else None
 
     def allocate_chain_topology(self, chain_config: List[Tuple[str, int]]) -> Dict[str, List[int]]:
-        is_sqtm = any('tele_ancilla' in reg_name for reg_name, _ in chain_config)
+        is_sqm = any('tele_ancilla' in reg_name for reg_name, _ in chain_config)
         R = n = 0
         for reg_name, size in chain_config:
             if reg_name == "q_work":
@@ -63,19 +63,19 @@ class QubitMapper:
                     pass
         if R == 0 or n == 0:
             return self._allocate_generic_chain(chain_config)
-        if is_sqtm:
-            return self.allocate_sqtm_per_bit_topology(R=R, n=n)
+        if is_sqm:
+            return self.allocate_sqm_per_bit_topology(R=R, n=n)
         else:
             return self.allocate_swap_per_bit_topology(R=R, n=n)
 
-    def allocate_sqtm_per_bit_topology(self, R: int, n: int) -> Dict[str, List[int]]:
+    def allocate_sqm_per_bit_topology(self, R: int, n: int) -> Dict[str, List[int]]:
         result = {}
         result["q_work"] = []
         for r_idx in range(R):
             result[f"mem_orig_{r_idx}"] = []
             result[f"mem_backup_{r_idx}"] = []
             result[f"tele_ancilla_{r_idx}"] = []
-        print(f"[QubitMapper] SQTM Per-Bit Allocation (Qubit-Centric Center)")
+        print(f"[QubitMapper] SQM Per-Bit Allocation (Qubit-Centric Center)")
         print(f"  Target: R={R} memory pairs, n={n} qubits per register")
         total_qubits_needed = n * (1 + 3 * R)
         if total_qubits_needed > len(self.available_qubits):
@@ -339,11 +339,11 @@ class QubitMapper:
                         table[(row, col)].set_text_props(weight='bold')
         
         # Draw both mappers
-        draw_mapper(mapper1, ax1_matrix, ax1_table, "SQTM Allocation (Dual-Register)", "SQTM")
+        draw_mapper(mapper1, ax1_matrix, ax1_table, "SQM Allocation (Dual-Register)", "SQM")
         draw_mapper(mapper2, ax2_matrix, ax2_table, "SWAP Allocation (Single-Register)", "SWAP")
         
         # Add main title
-        fig.suptitle('Qubit Allocation Comparison: SQTM vs SWAP', 
+        fig.suptitle('Qubit Allocation Comparison: SQM vs SWAP', 
                     fontsize=16, fontweight='bold', y=0.98)
         
         # Add legend

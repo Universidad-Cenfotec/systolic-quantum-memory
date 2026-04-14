@@ -1,5 +1,5 @@
 """
-Tmax Calculator Module for Systolic Quantum Teleportation Memory (SQTM).
+Tmax Calculator Module for Systolic Quantum Memory (SQM).
 
 This module implements worst-case scenario analysis for quantum coherence times,
 protecting against relaxation fluctuations using percentile-based statistical methods.
@@ -14,7 +14,7 @@ from qiskit_ibm_runtime.fake_provider import FakeKyiv
 
 class TMaxCalculator:
     """
-    Calculates maximum allowed idle time (Tmax) for quantum states in SQTM.
+    Calculates maximum allowed idle time (Tmax) for quantum states in SQM.
     
     Uses worst-case scenario approach with percentile analysis to ensure
     fidelity preservation across the entire quantum processor.
@@ -86,7 +86,7 @@ class TMaxCalculator:
         tmax_us = tmax / 1000
         
         print("\n" + "="*70)
-        print("SYSTOLIC QUANTUM TELEPORTATION MEMORY (SQTM)")
+        print("SYSTOLIC QUANTUM MEMORY (SQM)")
         print("Thermodynamic Coherence Time Report")
         print("="*70)
         print(f"\nConfiguration:")
@@ -105,9 +105,9 @@ class TMaxCalculator:
 def main():
     """
     Main execution function for Tmax Calculator.
-    Demonstrates worst-case scenario analysis for SQTM.
+    Demonstrates worst-case scenario analysis for SQM.
     """
-    print("\n🔬 Initializing SQTM Tmax Calculator...")
+    print("\n🔬 Initializing SQM Tmax Calculator...")
     
     # Create calculator with default parameters
     calculator = TMaxCalculator(target_fidelity=0.75, safety_percentile=10)

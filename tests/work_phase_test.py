@@ -1,5 +1,5 @@
 # ============================================================
-# SQTM Research Project — Work Phase Simulation Test
+# SQM Research Project — Work Phase Simulation Test
 # Systolic Quantum Teleportation Memory
 # Authors: Danny Valerio-Ramírez & Santiago Núñez-Corrales
 # ============================================================
@@ -161,7 +161,7 @@ def run_work_phase_simulation(N: int = 2, shots: int = 1024) -> Dict[str, int]:
 def main():
     """Main test function for work phase simulation."""
     print("\n" + "=" * 70)
-    print("  SQTM – Work Phase Simulation Test (Standalone)")
+    print("  SQM – Work Phase Simulation Test (Standalone)")
     print("=" * 70)
     
     # Run the simulation

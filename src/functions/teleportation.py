@@ -1,5 +1,5 @@
 # ============================================================
-# SQTM Research Project — Systolic Teleportation Module
+# SQM Research Project — Systolic Teleportation Module
 # Systolic Quantum Teleportation Memory
 # Authors: Danny Valerio-Ramírez & Santiago Núñez-Corrales
 # ============================================================

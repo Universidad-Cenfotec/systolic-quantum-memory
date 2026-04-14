@@ -1,5 +1,5 @@
 # ============================================================
-# SQTM Research Project — Teleportation Simulation Test
+# SQM Research Project — Teleportation Simulation Test
 # Systolic Quantum Teleportation Memory
 # Authors: Danny Valerio-Ramírez & Santiago Núñez-Corrales
 # ============================================================
@@ -81,7 +81,7 @@ def main():
     """Main test function for teleportation simulation."""
     
     print("=" * 70)
-    print("  SQTM – Teleportation Simulation Test")
+    print("  SQM – Teleportation Simulation Test")
     print("=" * 70)
     
     # ──────────────────────────────────────────────────────────────
