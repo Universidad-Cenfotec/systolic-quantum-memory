@@ -1,4 +1,6 @@
 import os
+import csv
+from datetime import datetime
 import numpy as np
 import matplotlib
 matplotlib.use("Agg")
@@ -136,7 +138,8 @@ class TmaxValidator:
         self,
         num_ids_list: list[int],
         shots: int = 4000,
-        plot_path: str | None = "results/id_decay.png"
+        plot_path: str | None = "results/id_decay.png",
+        csv_path: str | None = None
     ) -> None:
         """
         Sweep over different numbers of ID gates and measure fidelity decay.
@@ -145,6 +148,7 @@ class TmaxValidator:
             num_ids_list: List of number of ID gates to apply
             shots: Measurement shots per point
             plot_path: Path to save plot
+            csv_path: Path to save measurement data as CSV (default: data/id_sweep_<timestamp>.csv)
         """
         print("=" * 70)
         print("  SQM -- ID Gate Sweep: Measuring T1/T2 Decay")
@@ -169,9 +173,49 @@ class TmaxValidator:
         
         print()
         
+        # Save to CSV
+        if csv_path is None:
+            # Generate default CSV path with timestamp
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            csv_path = f"data/id_sweep_N{self.N}_T1_{self.T1_ns:.0f}_T2_{self.T2_ns:.0f}_{timestamp}.csv"
+        
+        self._save_to_csv(csv_path, num_ids_list)
+        
         # Plot
         if plot_path:
             self._plot_decay(plot_path)
+
+    def _save_to_csv(self, csv_path: str, num_ids_list: list[int]) -> None:
+        """
+        Save measurement data to CSV file.
+        
+        Args:
+            csv_path: Path to save CSV
+            num_ids_list: List of number of ID gates applied
+        """
+        os.makedirs(os.path.dirname(csv_path) if os.path.dirname(csv_path) else ".", exist_ok=True)
+        
+        with open(csv_path, 'w', newline='') as csvfile:
+            fieldnames = ['num_ids', 'delay_ns', 'delay_us', 'fidelity', 'N_qubits', 'T1_ns', 'T2_ns', 'ID_duration_ns']
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            
+            # Write header
+            writer.writeheader()
+            
+            # Write data rows
+            for num_ids, delay_ns, fidelity in zip(num_ids_list, self.delay_list, self.fidelity_list):
+                writer.writerow({
+                    'num_ids': num_ids,
+                    'delay_ns': f"{delay_ns:.1f}",
+                    'delay_us': f"{delay_ns / 1000:.3f}",
+                    'fidelity': f"{fidelity:.6f}",
+                    'N_qubits': self.N,
+                    'T1_ns': f"{self.T1_ns:.0f}",
+                    'T2_ns': f"{self.T2_ns:.0f}",
+                    'ID_duration_ns': self.ID_DURATION_NS
+                })
+        
+        print(f"  [CSV] Saved to: {csv_path}")
 
     def _plot_decay(self, plot_path: str) -> None:
         """Plot the measured fidelity decay."""
