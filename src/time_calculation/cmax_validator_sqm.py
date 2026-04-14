@@ -17,10 +17,12 @@ from qiskit_ibm_runtime.fake_provider import FakeKyiv
 # Handle imports for both direct execution and module import
 try:
     from src.functions.qubit_mapper import QubitMapper
+    from src.functions.teleportation import SystolicTeleportation
 except ModuleNotFoundError:
     # Add parent directory to path for direct script execution
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
     from src.functions.qubit_mapper import QubitMapper
+    from src.functions.teleportation import SystolicTeleportation
 
 
 # =============================================================================
@@ -74,6 +76,9 @@ class CMaxValidator:
         self.p_fit:     float = 0.0
         self.B_fit:     float = 0.0
         self.r_empirico: float = 0.0
+
+        # 6. Initialize SystolicTeleportation module
+        self.teleportation = SystolicTeleportation(name="cmax_validator_teleportation")
 
     # -- Extraction of calibration parameters ----------------------------------
 
@@ -139,34 +144,27 @@ class CMaxValidator:
             chains.append((s_qubit, o_qubit, la_qubit, lb_qubit))
         
         return chains
-    # -- Empirical fidelity with 4-register teleportation protocol ------------
+
+    # -- Empirical fidelity with SystolicTeleportation protocol ----------------
 
     def empirical_fidelity(self, m_swaps: int, shots: int = 4000) -> float:
        
         if m_swaps < 0:
             raise ValueError(f"m_swaps must be >= 0, received: {m_swaps}")
 
-        # -- Build 4-register quantum circuit ----------------------------------
+        # -- Build 4-register quantum circuit (same as cmax_validator.py) -------
         reg_s = QuantumRegister(self.N, name="S")      # Storage
         reg_o = QuantumRegister(self.N, name="O")      # Operation
         reg_la = QuantumRegister(self.N, name="LA")    # Link Alice
         reg_lb = QuantumRegister(self.N, name="LB")    # Link Bob
         
-        cr_s = ClassicalRegister(self.N, name="cr_s")           # S measurements
-        cr_o = ClassicalRegister(self.N, name="cr_o")           # O measurements
-        cr_la = ClassicalRegister(self.N, name="cr_la")         # LA measurements
         cr_lb = ClassicalRegister(self.N, name="cr_lb")         # LB measurements
         
-        qc = QuantumCircuit(reg_s, reg_o, reg_la, reg_lb, cr_s, cr_o, cr_la, cr_lb)
+        qc = QuantumCircuit(reg_s, reg_o, reg_la, reg_lb, cr_lb)
 
-        # --------------------------------------------------------------------
-        # PASO 1: PREPARATION (all |0>) - implicit by circuit initialization
-        # --------------------------------------------------------------------
+        # --------- PHASE 1: PREPARATION (all |0>) - implicit by circuit initialization
         
-        # --------------------------------------------------------------------
-        # PASO 2: m SWAP CYCLES (Storage ? Operation)
-        # --------------------------------------------------------------------
-        
+        # --------- PHASE 2: m SWAP CYCLES (Storage <-> Operation)
         
         for _ in range(m_swaps):
             for i in range(self.N):
@@ -180,66 +178,30 @@ class CMaxValidator:
             
             qc.barrier()  # Prevent inter-SWAP optimization
 
-        # --------------------------------------------------------------------
-        # --------------------------------------------------------------------
-        # PASO 3: TELEPORTATION PROTOCOL (S -> LA -> LB)
-        # --------------------------------------------------------------------
+        # --------- PHASE 3: TELEPORTATION PROTOCOL (S -> LA -> LB)
+        # Use SystolicTeleportation.build_circuit() which includes active reset
+        # This replaces manual EPR, BSM, feed-forward with unified implementation
         
-        # 3a. EPR PAIR GENERATION (Bell pair creation between LA and LB)
-        for i in range(self.N):
-            qc.h(reg_la[i])
-            qc.cx(reg_la[i], reg_lb[i])
+        cr_bell = ClassicalRegister(2 * self.N, name="cr_bell")
+        qc.add_register(cr_bell)
         
-        qc.barrier()
-        
-        # 3b. BELL MEASUREMENT PREPARATION (Source interacts with LinkAlice)
-        for i in range(self.N):
-            qc.cx(reg_s[i], reg_la[i])
-            qc.h(reg_s[i])
+        qc = self.teleportation.build_circuit(
+            qc, 
+            source_reg=reg_s,
+            dest_reg=reg_lb,
+            ancilla_reg=reg_la,
+            cr_bell=cr_bell,
+        )
         
         qc.barrier()
         
-        # 3c. BELL STATE MEASUREMENT (BSM) - Mid-circuit measurement
-        # Classical bits: cr_s[i] stores S[i], cr_la[i] stores LA[i]
-        # These measurements collapse the Bell state and provide correction info
-        for i in range(self.N):
-            qc.measure(reg_s[i], cr_s[i])
-            qc.measure(reg_la[i], cr_la[i])
+        # --------- PHASE 4: FINAL MEASUREMENT (LinkBob only)
         
-        qc.barrier()
-        
-        # 3d. FEED-FORWARD (Data Movement Correction)
-             
-        for i in range(self.N):
-            # If LA[i] measured as 1, apply X to LB[i]
-            # (corrects for phase flip in Bell measurement)
-
-            with qc.if_test((cast(Clbit, cr_la[i]), 1)):
-                qc.x(reg_lb[i])
-            
-            # If S[i] measured as 1, apply Z to LB[i]
-            # (corrects for bit flip in Bell measurement)
-            with qc.if_test((cast(Clbit, cr_s[i]), 1)):
-                qc.z(reg_lb[i])
-  
-        
-        qc.barrier()
-        
-        # --------------------------------------------------------------------
-        # PASO 4: FINAL MEASUREMENT (all registers for completeness)
-        # --------------------------------------------------------------------
-        
-        # Measure Operation register (part of complete protocol)
-        for i in range(self.N):
-            qc.measure(reg_o[i], cr_o[i])
-        
-        # Measure LinkBob register (final state for fidelity)
+        # Measure LinkBob register (final state for fidelity calculation)
         for i in range(self.N):
             qc.measure(reg_lb[i], cr_lb[i])
 
-# --------------------------------------------------------------------
-        # HARDWARE-AWARE QUBIT MAPPING
-        # --------------------------------------------------------------------
+        # --------- HARDWARE-AWARE QUBIT MAPPING
         chains = self._get_physical_chains()
         
         initial_layout = [0] * (4 * self.N)
@@ -249,18 +211,14 @@ class CMaxValidator:
             initial_layout[2 * self.N + i] = phys_la             # Link Alice
             initial_layout[3 * self.N + i] = phys_lb             # Link Bob
             
-        # --------------------------------------------------------------------
-        # TRANSPILE AND SIMULATE
-        # --------------------------------------------------------------------
+        # --------- TRANSPILE AND SIMULATE
         
         sim  = AerSimulator(noise_model=self.noise_model)
         qc_t = transpile(qc, backend=self.backend, optimization_level=0, initial_layout=initial_layout)
         job  = sim.run(qc_t, shots=shots)
         counts: dict[str, int] = job.result().get_counts()
 
-# --------------------------------------------------------------------
-        # DIRECT VERIFICATION OF TELEPORTED STATUS
-        # --------------------------------------------------------------------
+        # --------- DIRECT VERIFICATION OF TELEPORTED STATUS
         
         fidelity_count = 0
         target_state = '0' * self.N
@@ -269,8 +227,11 @@ class CMaxValidator:
             bitstring_clean = bitstring.replace(' ', '')
             bitstring_rev = bitstring_clean[::-1]  
             
-            # Extraer ?nicamente los bits del destino final (Link Bob)
-            lb_bits = bitstring_rev[3*self.N : 4*self.N]
+            # Extract Link Bob bits (final destination after teleportation)
+            # Bitstring layout: [cr_bell: 2N bits (from build_circuit)] + [cr_lb: N bits]
+            # Reversed: [cr_lb: N bits] + [cr_bell: 2N bits]
+            # cr_lb is at position [0:N] after reversal
+            lb_bits = bitstring_rev[0 : self.N]
             
             if lb_bits == target_state:
                 fidelity_count += count
@@ -287,16 +248,16 @@ class CMaxValidator:
     ) -> np.ndarray:
 
         print("=" * 75)
-        print("  SQM -- Phase B: RB Characterization with 4-Register Teleportation")
+        print("  SQM -- Phase B: RB Characterization with SystolicTeleportation")
         print("=" * 75)
         print(f"\n  Backend      : {self.backend.name}")
         print(f"  Architecture : 4 registers * {self.N} qubits = {4*self.N} total qubits")
         print(f"                 (Storage, Operation, LinkAlice, LinkBob)")
-        print(f"  Hilbert dim  : d = 2^({4*self.N}) = {self.d}")
+        print(f"  Hilbert dim  : d = 2^{self.N} = {self.d}")
         print(f"  Native gate  : {self.native_2q_gate.upper()}")
         print(f"  p_swap_theory: {self.p_swap_teorico:.6f}  "
               f"({self.p_swap_teorico * 100:.4f} %)")
-        print(f"\n  Measuring F_emp(m) for m = {m_list} with teleportation protocol...")
+        print(f"\n  Measuring F_emp(m) for m = {m_list} with SystolicTeleportation...")
         print(f"  shots per point = {shots}\n")
 
         # -- Empirical data collection -----------------------------------------
@@ -360,12 +321,13 @@ class CMaxValidator:
             writer = csv.writer(f)
             
             # Write header with metadata
-            writer.writerow(["SQM RB Characterization Results"])
+            writer.writerow(["SQM RB Characterization Results (SystolicTeleportation)"])
             writer.writerow(["Timestamp", datetime.now().isoformat()])
             writer.writerow(["Backend", self.backend.name])
             writer.writerow(["Architecture", f"4 registers * {self.N} qubits = {4*self.N} total qubits"])
-            writer.writerow(["Hilbert Dimension", f"d = 2^{4*self.N} = {self.d}"])
+            writer.writerow(["Hilbert Dimension", f"d = 2^{self.N} = {self.d}"])
             writer.writerow(["Native Gate", self.native_2q_gate.upper()])
+            writer.writerow(["Teleportation Module", "SystolicTeleportation (with active reset)"])
             writer.writerow([])
             
             # Write fit parameters
@@ -395,7 +357,7 @@ class CMaxValidator:
         self.r_empirico = ((self.d - 1) * (1.0 - self.p_fit)) / self.d
 
         print("\n" + "=" * 75)
-        print("  SQM -- RB Fit Results (Magesan 2012 + Teleportation Protocol)")
+        print("  SQM -- RB Fit Results (Magesan 2012 + SystolicTeleportation)")
         print("=" * 75)
 
         print(f"\n  Model: F(m) = A * p^m + B")
@@ -407,7 +369,7 @@ class CMaxValidator:
 
         print(f"\n  [ARCHITECTURE]  4 registers * {self.N} qubits = {4*self.N} total qubits")
         print(f"                  (Storage, Operation, LinkAlice, LinkBob)")
-        print(f"                  Hilbert space dimension: d = 2^{4*self.N} = {self.d}")
+        print(f"                  Hilbert space dimension: d = 2^{self.N} = {self.d}")
 
         print(f"\n  [PURIFIED EMPIRICAL ERROR]")
         print(f"    r_empirical = (d-1)/d * (1 - p_fit)")
@@ -435,6 +397,8 @@ class CMaxValidator:
         print("\n  [TELEPORTATION PROTOCOL IMPACT]")
         print(f"    The parameter A={self.A_fit:.6f} now represents")
         print(f"    the fidelity after surviving the teleportation 'tollbooth'.")
+        print(f"    Active reset (qc.reset) in SystolicTeleportation eliminates")
+        print(f"    entanglement residue, enabling more accurate C_MAX calculation.")
         print(f"    C_MAX calculation using this A guarantees a post-rescue")
         print(f"    coherence bound that accounts for protocol overhead.")
 
@@ -459,14 +423,14 @@ class CMaxValidator:
 
         fig, ax = plt.subplots(figsize=(10, 6))
         ax.scatter(m_arr, y_data, color="steelblue", s=100, zorder=5,
-                   label="F_emp(m) - 4-register teleportation protocol")
+                   label="F_emp(m) - SystolicTeleportation with active reset")
         ax.plot(m_dense, f_fit, color="crimson", linewidth=2.5,
                 label=f"Magesan fit: A={A_fit:.3f}, p={p_fit:.4f}, B={B_fit:.3f}")
         ax.axhline(y=B_fit, linestyle="--", color="gray", alpha=0.6,
                    label=f"Asymptote B = {B_fit:.3f}")
         ax.set_xlabel("m  (SWAP cycles)", fontsize=13, fontweight='bold')
         ax.set_ylabel("F(m)  - survival probability", fontsize=13, fontweight='bold')
-        ax.set_title(f"SQM RB Decay Curve with Teleportation (N={self.N}, d={self.d})", 
+        ax.set_title(f"SQM RB Decay Curve with SystolicTeleportation (N={self.N}, d={self.d})", 
                      fontsize=14, fontweight='bold')
         ax.legend(fontsize=11, loc='upper right')
         ax.grid(alpha=0.3, linestyle='--')
@@ -572,7 +536,7 @@ if __name__ == "__main__":
 
     # -- Phase B.1: Complete RB characterization with teleportation ------------
     m_list = [0, 1, 2, 4, 6, 8, 10, 15, 20, 25, 30, 40, 50, 60, 80, 100]
-    popt = validator.run_rb_characterization(m_list, shots=4000, plot_path = "results/rb_decay_curve n="+ str(N_qubits) +".png")
+    popt = validator.run_rb_characterization(m_list, shots=4000, plot_path = "results/rb_decay_curve_sqm n="+ str(N_qubits) +".png")
 
     # -- Phase B.2: Print results and validate model ---------------------------
     r_emp = validator.print_rb_results(popt)

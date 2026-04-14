@@ -130,10 +130,8 @@ class SQMCompiler:
         # ----------------------------------------------------------
 
         self.qpc = QPC(logical_size=R, c_max=c_max, t_max=t_max_ns)
-
-        # Current counters for active tracking (per register)
-        self.current_c: Dict[int, int] = {i: 0 for i in range(R)}
-        self.current_t: Dict[int, float] = {i: 0.0 for i in range(R)}
+        # Note: QPC fully manages wear-down tracking (costs and idle times).
+        # No local tracking needed - consult QPC via get_cost() and get_idle_time().
 
         # ----------------------------------------------------------
         # 5. Initialize Functional Modules
@@ -306,9 +304,7 @@ class SQMCompiler:
                     for qubit in active_qubits:
                         qc.id(qubit)
                 
-                # Increment time for all active registers
-                for i in range(self.R):
-                    self.current_t[i] += time_ns
+                # (Time tracking is handled by QPC via update_odometer() calls)
 
                 qc.barrier()  # Prevent inter-SWAP optimization
                 for logical_addr in range(self.R):    
@@ -324,10 +320,6 @@ class SQMCompiler:
                     raise ValueError(f"Logical address {logical_addr} out of range [0, {self.R - 1}]")
 
                 print(f"    -> READ from Mem[{logical_addr}]")
-
-                # Increment counters
-                self.current_c[logical_addr] += 1
-                self.current_t[logical_addr] += self.SWAP_TIME_NS
 
                 # Determine source register (Original or Backup) - consultando al QPC
                 if self.qpc.get_location(logical_addr) == MemLocation.ORIGINAL:
@@ -351,10 +343,6 @@ class SQMCompiler:
                     raise ValueError(f"Logical address {logical_addr} out of range [0, {self.R - 1}]")
 
                 print(f"    -> WRITE to Mem[{logical_addr}]")
-
-                # Increment counters
-                self.current_c[logical_addr] += 1
-                self.current_t[logical_addr] += self.SWAP_TIME_NS
 
                 # Determine destination register - consultando al QPC
                 if self.qpc.get_location(logical_addr) == MemLocation.ORIGINAL:
@@ -434,8 +422,7 @@ class SQMCompiler:
 
             # tick() internally alternates location (ORIGINAL→BACKUP) and resets odometer
             new_location = self.qpc.tick(logical_addr)
-            self.current_c[logical_addr] = 0
-            self.current_t[logical_addr] = 0.0
+            # (Odometer reset is handled by QPC.tick() internally)
 
             print(f"    [Tele-Refresh] Mem[{logical_addr}] now stored in {new_location.value}")
 
@@ -582,8 +569,12 @@ class SQMCompiler:
             "qpc_locations": {
                 i: self.qpc.get_location(i).value for i in range(self.R)
             },
-            "current_c": self.current_c,
-            "current_t": self.current_t,
+            "qpc_costs": {
+                i: self.qpc.get_cost(i) for i in range(self.R)
+            },
+            "qpc_idle_times": {
+                i: self.qpc.get_idle_time(i) for i in range(self.R)
+            },
             "logical_to_physical_map": self.logical_to_physical_map,
             "available_qubits": len(self.qubit_mapper.available_qubits),
         }

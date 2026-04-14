@@ -30,7 +30,8 @@ SQM/
 │   └── time_calculation/                 # Performance metrics & validation
 │       ├── __init__.py
 │       ├── tmax_calculator.py            # Passive desgaste threshold
-│       ├── cmax_validator.py             # Active desgaste (SQM)
+│       ├── cmax_validator.py             # Active desgaste (SQM) - DEPRECATED
+│       ├── cmax_validator_sqm.py         # Active desgaste (SQM + SystolicTeleportation)
 │       └── cmax_validator_swap.py        # Active desgaste (SWAP)
 ├── tests/                                # Test suite
 │   ├── __init__.py
@@ -147,7 +148,8 @@ Validates the quantum processor component abstraction.
 | Module | Class | Purpose |
 |--------|-------|---------|
 | `qubit_mapper.py` | `QubitMapper` | FakeKyiv backend + chain topology allocation |
-| `cmax_validator.py` | `CmaxValidator` | Active desgaste threshold (SQM) |
+| `cmax_validator.py` | `CmaxValidator` | Active desgaste threshold (SQM) - DEPRECATED |
+| `cmax_validator_sqm.py` | `CMaxValidator` | Active desgaste (SQM + SystolicTeleportation with active reset) |
 | `cmax_validator_swap.py` | `CmaxValidatorSwap` | Active desgaste threshold (SWAP) |
 | `tmax_calculator.py` | `TmaxCalculator` | Passive desgaste from T1/T2 times |
 
