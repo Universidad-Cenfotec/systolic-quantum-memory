@@ -1,6 +1,6 @@
 # ============================================================
-# SQTM Research Project - Comparative Analysis Module
-# Compare SQTM Compiler vs SWAP Compiler
+# SQM Research Project - Comparative Analysis Module
+# Compare SQM Compiler vs SWAP Compiler
 # ============================================================
 
 import sys
@@ -15,7 +15,7 @@ from typing import List, Tuple, Dict, Any, Optional
 # Ensure project root is in path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.simulator.sqtm_simulator import SQTMCompiler
+from src.simulator.sqm_simulator import SQMCompiler
 from src.simulator.swap_simulator import SwapCompiler
 from src.functions.qubit_mapper import QubitMapper
 
@@ -24,7 +24,7 @@ from src.functions.qubit_mapper import QubitMapper
 # Compiler Execution Functions
 # ══════════════════════════════════════════════════════════════════════════════
 
-def run_sqtm_compiler(R: int, n: int, c_max: int, t_max_ns: float, 
+def run_sqm_compiler(R: int, n: int, c_max: int, t_max_ns: float, 
                      workload: List[str], shots: int, initial_state: int = 0) -> Optional[Dict[str, Any]]:
 
     # ──────────────────────────────────────────────────────────
@@ -35,12 +35,12 @@ def run_sqtm_compiler(R: int, n: int, c_max: int, t_max_ns: float,
     
     print("\n" + "=" * 70)
     state_label = "|1⟩" if initial_state == 1 else "|0⟩"
-    print(f"SQTM Compiler - Dual-Register Memory with Quantum Teleportation")
+    print(f"SQM Compiler - Dual-Register Memory with Quantum Teleportation")
     print(f"Target state: {state_label}")
     print("=" * 70)
 
     # Create compiler with initial state parameter
-    sqtm = SQTMCompiler(R=R, n=n, c_max=c_max, t_max_ns=t_max_ns, initial_state=initial_state)
+    sqm = SQMCompiler(R=R, n=n, c_max=c_max, t_max_ns=t_max_ns, initial_state=initial_state)
 
     # Display workload
     print(f"\n[Workload] Executing {len(workload)} instructions:")
@@ -48,7 +48,7 @@ def run_sqtm_compiler(R: int, n: int, c_max: int, t_max_ns: float,
         print(f"  {i}. {instr}")
 
     # Compile workload
-    circuit = sqtm.compile_workload(workload)
+    circuit = sqm.compile_workload(workload)
 
     print(f"\n[Circuit Metrics]")
     print(f"  Qubits: {circuit.num_qubits}")
@@ -56,7 +56,7 @@ def run_sqtm_compiler(R: int, n: int, c_max: int, t_max_ns: float,
     print(f"  Depth: {circuit.depth()}")
     print(f"  Size: {circuit.size()}")
 
-    state = sqtm.get_compiler_state()
+    state = sqm.get_compiler_state()
     print(f"\n[Compiler State]")
     print(f"  Available physical qubits: {state['available_qubits']}")
 
@@ -65,9 +65,9 @@ def run_sqtm_compiler(R: int, n: int, c_max: int, t_max_ns: float,
     print("-" * 70)
 
     try:
-        results = sqtm.run_simulation(circuit, shots=shots)
+        results = sqm.run_simulation(circuit, shots=shots)
         
-        print(f"\n[SQTM Results]")
+        print(f"\n[SQM Results]")
         print(f"  Fidelity: {results['fidelity']:.4f}")
         print(f"  Total Shots: {results['total_shots']}")
         print(f"  Top 5 outcomes:")
@@ -75,11 +75,11 @@ def run_sqtm_compiler(R: int, n: int, c_max: int, t_max_ns: float,
             print(f"    |{state_str}⟩: {count} shots")
 
         # Include the qubit mapper for visualization
-        results['qubit_mapper'] = sqtm.qubit_mapper
+        results['qubit_mapper'] = sqm.qubit_mapper
         return results
 
     except Exception as e:
-        print(f"[Error] SQTM simulation failed: {e}")
+        print(f"[Error] SQM simulation failed: {e}")
         import traceback
         traceback.print_exc()
         return None
@@ -160,57 +160,51 @@ def analyze_workload(R: int, n: int, c_max: int, t_max_ns: float,
     print("█" + " " * 68 + "█")
     print("█" * 70)
 
-    # Run SQTM
-    sqtm_results = run_sqtm_compiler(R=R, n=n, c_max=c_max, t_max_ns=t_max_ns,
+    # Run SQM
+    sqm_results = run_sqm_compiler(R=R, n=n, c_max=c_max, t_max_ns=t_max_ns,
                                      workload=workload, shots=shots, initial_state=initial_state)
 
     # Run SWAP
     swap_results = run_swap_compiler(R=R, n=n, c_max=c_max, t_max_ns=t_max_ns,
                                      workload=workload, shots=shots, initial_state=initial_state)
 
-    # Visualize qubit allocation comparison (called once for both mappers)
-    if sqtm_results and swap_results and 'qubit_mapper' in sqtm_results and 'qubit_mapper' in swap_results:
-        output_viz_file = f"results/qubit_mapping_comparison_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
-        QubitMapper.compare_mappers(sqtm_results['qubit_mapper'], swap_results['qubit_mapper'], 
-                                   output_file=output_viz_file)
-
     # Comparative Analysis
     print("\n" + "=" * 70)
     print("COMPARATIVE ANALYSIS SUMMARY")
     print("=" * 70)
 
-    if sqtm_results and swap_results:
-        sqtm_fidelity = sqtm_results['fidelity']
+    if sqm_results and swap_results:
+        sqm_fidelity = sqm_results['fidelity']
         swap_fidelity = swap_results['fidelity']
-        sqtm_qubits = sqtm_results.get('qubits', 'N/A')
+        sqm_qubits = sqm_results.get('qubits', 'N/A')
         swap_qubits = swap_results.get('qubits', 'N/A')
-        difference = sqtm_fidelity - swap_fidelity
+        difference = sqm_fidelity - swap_fidelity
         percent_diff = (difference / swap_fidelity * 100) if swap_fidelity > 0 else 0
 
         print(f"\n[Fidelity Comparison]")
-        print(f"  SQTM:  {sqtm_fidelity:.4f} ({sqtm_fidelity*100:.2f}%)")
+        print(f"  SQM:  {sqm_fidelity:.4f} ({sqm_fidelity*100:.2f}%)")
         print(f"  SWAP:  {swap_fidelity:.4f} ({swap_fidelity*100:.2f}%)")
         print(f"  Δ:     {difference:+.4f} ({percent_diff:+.2f}%)")
 
         behavior = "✓ BETTER" if difference > 0 else "✗ WORSE" if difference < 0 else "= EQUAL"
-        print(f"  → SQTM is {behavior} than SWAP")
+        print(f"  → SQM is {behavior} than SWAP")
 
         print(f"\n[Architecture Comparison]")
-        print(f"  SQTM Memory:  Dual-register (Original + Backup)")
+        print(f"  SQM Memory:  Dual-register (Original + Backup)")
         print(f"  SWAP Memory:  Single-register (Baseline)")
-        print(f"  SQTM Resilience: Higher (backup register for redundancy)")
-        print(f"  → SQTM provides resilience advantage via dual-register design")
+        print(f"  SQM Resilience: Higher (backup register for redundancy)")
+        print(f"  → SQM provides resilience advantage via dual-register design")
 
         return {
             'workload_name': workload_name,
-            'sqtm': sqtm_results,
+            'sqm': sqm_results,
             'swap': swap_results,
             'comparison': {
-                'sqtm_fidelity': sqtm_fidelity,
+                'sqm_fidelity': sqm_fidelity,
                 'swap_fidelity': swap_fidelity,
                 'difference': difference,
                 'percent_diff': percent_diff,
-                'sqtm_qubits': sqtm_qubits,
+                'sqm_qubits': sqm_qubits,
                 'swap_qubits': swap_qubits,
             }
         }
@@ -228,14 +222,25 @@ def run_full_comparison(R: int, n: int, c_max: int, t_max_ns: float,
     
     # Summary tracking
     results = []
+    qubit_mapping_visualized = False
     
     # Run comparative analysis for each workload
-    for workload_name, workload in workloads:
+    for idx, (workload_name, workload) in enumerate(workloads):
         result = analyze_workload(R=R, n=n, c_max=c_max, t_max_ns=t_max_ns,
                                  workload_name=workload_name, 
                                  workload=workload, shots=shots, initial_state=initial_state)
         if result:
             results.append(result)
+            
+            # Visualize qubit allocation comparison only for the first workload
+            if idx == 0 and not qubit_mapping_visualized:
+                if 'sqm' in result and 'swap' in result:
+                    sqm_mapper = result['sqm'].get('qubit_mapper')
+                    swap_mapper = result['swap'].get('qubit_mapper')
+                    if sqm_mapper and swap_mapper:
+                        output_viz_file = f"results/qubit_mapping_comparison_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
+                        QubitMapper.compare_mappers(sqm_mapper, swap_mapper, output_file=output_viz_file)
+                        qubit_mapping_visualized = True
 
     # Print overall summary
     print("\n\n" + "╔" + "═" * 68 + "╗")
@@ -246,7 +251,7 @@ def run_full_comparison(R: int, n: int, c_max: int, t_max_ns: float,
         print(f"\n[Analysis Summary - {len(results)} Workloads]")
         print("\n" + "┌" + "─" * 68 + "┐")
         
-        sqtm_better_count = 0
+        sqm_better_count = 0
         swap_better_count = 0
         equal_count = 0
 
@@ -256,8 +261,8 @@ def run_full_comparison(R: int, n: int, c_max: int, t_max_ns: float,
             workload = result['workload_name']
 
             if diff > 0:
-                sqtm_better_count += 1
-                status = "✓ SQTM BETTER"
+                sqm_better_count += 1
+                status = "✓ SQM BETTER"
             elif diff < 0:
                 swap_better_count += 1
                 status = "✗ SWAP BETTER"
@@ -270,17 +275,17 @@ def run_full_comparison(R: int, n: int, c_max: int, t_max_ns: float,
         print("└" + "─" * 68 + "┘")
 
         print(f"\n[Results]")
-        print(f"  SQTM Better Cases:  {sqtm_better_count}/{len(results)}")
+        print(f"  SQM Better Cases:  {sqm_better_count}/{len(results)}")
         print(f"  SWAP Better Cases:  {swap_better_count}/{len(results)}")
         print(f"  Equal Cases:        {equal_count}/{len(results)}")
 
         # Calculate average metrics
-        avg_sqtm_fidelity = sum(r['comparison']['sqtm_fidelity'] for r in results) / len(results)
+        avg_sqm_fidelity = sum(r['comparison']['sqm_fidelity'] for r in results) / len(results)
         avg_swap_fidelity = sum(r['comparison']['swap_fidelity'] for r in results) / len(results)
-        avg_difference = avg_sqtm_fidelity - avg_swap_fidelity
+        avg_difference = avg_sqm_fidelity - avg_swap_fidelity
 
         print(f"\n[Average Fidelity Across All Workloads]")
-        print(f"  SQTM:  {avg_sqtm_fidelity:.4f} ({avg_sqtm_fidelity*100:.2f}%)")
+        print(f"  SQM:  {avg_sqm_fidelity:.4f} ({avg_sqm_fidelity*100:.2f}%)")
         print(f"  SWAP:  {avg_swap_fidelity:.4f} ({avg_swap_fidelity*100:.2f}%)")
         print(f"  Δ:     {avg_difference:+.4f}")
 
@@ -294,23 +299,23 @@ def run_full_comparison(R: int, n: int, c_max: int, t_max_ns: float,
         
         # Prepare data for graph and CSV
         workload_names = []
-        sqtm_fidelities = []
+        sqm_fidelities = []
         swap_fidelities = []
         csv_data = []
         
         for i, result in enumerate(results, 1):
             workload_names.append(result['workload_name'])
-            sqtm_fidelities.append(result['comparison']['sqtm_fidelity'])
+            sqm_fidelities.append(result['comparison']['sqm_fidelity'])
             swap_fidelities.append(result['comparison']['swap_fidelity'])
             
             csv_data.append({
                 'Run': i,
                 'Workload': result['workload_name'],
-                'SQTM_Fidelity': result['comparison']['sqtm_fidelity'],
+                'SQM_Fidelity': result['comparison']['sqm_fidelity'],
                 'SWAP_Fidelity': result['comparison']['swap_fidelity'],
                 'Difference': result['comparison']['difference'],
                 'Percent_Diff': result['comparison']['percent_diff'],
-                'SQTM_Qubits': result['comparison']['sqtm_qubits'],
+                'SQM_Qubits': result['comparison']['sqm_qubits'],
                 'SWAP_Qubits': result['comparison']['swap_qubits'],
             })
         
@@ -319,12 +324,12 @@ def run_full_comparison(R: int, n: int, c_max: int, t_max_ns: float,
         x_pos = np.arange(len(workload_names))
         width = 0.35
         
-        bars1 = ax.bar(x_pos - width/2, sqtm_fidelities, width, label='SQTM', color='#2E86AB', alpha=0.8)
+        bars1 = ax.bar(x_pos - width/2, sqm_fidelities, width, label='SQM', color='#2E86AB', alpha=0.8)
         bars2 = ax.bar(x_pos + width/2, swap_fidelities, width, label='SWAP', color='#A23B72', alpha=0.8)
         
         ax.set_xlabel('Workload', fontsize=12, fontweight='bold')
         ax.set_ylabel('Fidelity', fontsize=12, fontweight='bold')
-        ax.set_title('Comparative Analysis: SQTM vs SWAP Compiler Fidelity', fontsize=14, fontweight='bold')
+        ax.set_title('Comparative Analysis: SQM vs SWAP Compiler Fidelity', fontsize=14, fontweight='bold')
         ax.set_xticks(x_pos)
         ax.set_xticklabels(workload_names, rotation=45, ha='right')
         ax.legend(fontsize=11)
@@ -356,8 +361,8 @@ def run_full_comparison(R: int, n: int, c_max: int, t_max_ns: float,
         csv_path = os.path.join(data_dir, f'comparison_results_{timestamp}.csv')
         
         with open(csv_path, 'w', newline='') as csvfile:
-            fieldnames = ['Run', 'Workload', 'SQTM_Fidelity', 'SWAP_Fidelity', 
-                         'Difference', 'Percent_Diff', 'SQTM_Qubits', 'SWAP_Qubits']
+            fieldnames = ['Run', 'Workload', 'SQM_Fidelity', 'SWAP_Fidelity', 
+                         'Difference', 'Percent_Diff', 'SQM_Qubits', 'SWAP_Qubits']
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerows(csv_data)
@@ -370,10 +375,10 @@ def run_full_comparison(R: int, n: int, c_max: int, t_max_ns: float,
             writer = csv.writer(csvfile)
             writer.writerow(['Metric', 'Value'])
             writer.writerow(['Total Workloads', len(results)])
-            writer.writerow(['SQTM Better', sqtm_better_count])
+            writer.writerow(['SQM Better', sqm_better_count])
             writer.writerow(['SWAP Better', swap_better_count])
             writer.writerow(['Equal', equal_count])
-            writer.writerow(['Avg SQTM Fidelity', f'{avg_sqtm_fidelity:.4f}'])
+            writer.writerow(['Avg SQM Fidelity', f'{avg_sqm_fidelity:.4f}'])
             writer.writerow(['Avg SWAP Fidelity', f'{avg_swap_fidelity:.4f}'])
             writer.writerow(['Avg Difference', f'{avg_difference:+.4f}'])
         

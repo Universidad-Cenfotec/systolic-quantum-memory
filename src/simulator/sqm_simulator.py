@@ -1,7 +1,7 @@
 # ============================================================
-# SQTM Research Project - Main Simulator & Compiler
-# Systolic Quantum Teleportation Memory
-# Authors: Danny Valerio-Ram?rez & Santiago N??ez-Corrales
+# SQM Research Project - Main Simulator & Compiler
+# Systolic Quantum Memory
+# Authors: Danny Valerio-Ramírez & Santiago Núñez-Corrales
 # Role: Quantum Compiler Architect (Senior)
 # ============================================================
 
@@ -28,7 +28,7 @@ from src.functions.teleportation import SystolicTeleportation
 from src.functions.qubit_mapper import QubitMapper
 
 
-class SQTMCompiler:
+class SQMCompiler:
 
     # Constant: SWAP operation duration in nanoseconds (NISQ-level)
     SWAP_TIME_NS = 1350
@@ -59,8 +59,8 @@ class SQTMCompiler:
         # 1b. Create thermal relaxation error linked to 'id' gate
         # ----------------------------------------------------------
         # T1 and T2 times (worst-case 10th percentile parameters)
-        t1_ns = 149_149   # 149.149 ?s (10th percentile)
-        t2_ns = 38_194    # 38.194 ?s (10th percentile - critical limiting time)
+        t1_ns = 149_149   # 149.149 μs (10th percentile)
+        t2_ns = 38_194    # 38.194 μs (10th percentile - critical limiting time)
         self.time_idle_ns = 7000  # One IDLE unit = 700 ns (identity gate duration)
         
         # Create and apply thermal relaxation error ONLY to ID gates (passive decay)
@@ -76,9 +76,9 @@ class SQTMCompiler:
                     backend_noise._default_quantum_errors[gate], gate
                 )
         
-        #print(f"[SQTM Compiler] Thermal relaxation configured: T1={t1_ns/1000:.1f}?s, T2={t2_ns/1000:.1f}?s")
-        #print(f"[SQTM Compiler] Idle period per unit: {self.time_idle_ns} ns")
-        #print(f"[SQTM Compiler] Applied thermal decay to 'id' gate on first {num_physical_qubits} qubits")
+        #print(f"[SQM Compiler] Thermal relaxation configured: T1={t1_ns/1000:.1f}μs, T2={t2_ns/1000:.1f}μs")
+        #print(f"[SQM Compiler] Idle period per unit: {self.time_idle_ns} ns")
+        #print(f"[SQM Compiler] Applied thermal decay to 'id' gate on first {num_physical_qubits} qubits")
 
         # Initialize QubitMapper for intelligent qubit allocation
         self.qubit_mapper = QubitMapper(self.backend)
@@ -139,43 +139,20 @@ class SQTMCompiler:
         # 5. Initialize Functional Modules
         # ----------------------------------------------------------
 
-        self.work_phase = SystolicWorkPhase(name="sqtm_work_phase")
-        self.teleportation = SystolicTeleportation(name="sqtm_teleportation")
+        self.work_phase = SystolicWorkPhase(name="sqm_work_phase")
+        self.teleportation = SystolicTeleportation(name="sqm_teleportation")
 
         # Cache for built registers (to avoid rebuilding)
         self._built_registers: Dict[str, QuantumRegister] = {}
 
         state_label = "|0>" if initial_state == 0 else "|1>"
-        print(f"[SQTM Compiler] Initialized: R={R}, n={n}, c_max={c_max}, t_max={t_max_ns} ns")
-        print(f"[SQTM Compiler] Fidelity target state: {state_label}")
+        print(f"[SQM Compiler] Initialized: R={R}, n={n}, c_max={c_max}, t_max={t_max_ns} ns")
+        print(f"[SQM Compiler] Fidelity target state: {state_label}")
         print(f"[Backend] {self.backend.__class__.__name__} with {self.qubit_mapper.n_qubits} qubits")
 
     # --------------------------------------------------------------
     # QUBIT ALLOCATION & PHYSICAL MAPPING
     # --------------------------------------------------------------
-
-    def _allocate_physical_qubits(
-        self,
-        register_type: str,
-        logical_addr: int,
-        quantum_register: QuantumRegister,
-    ) -> None:
-
-        required_qubits = quantum_register.size
-        register_id = quantum_register.name
-
-        # Use QubitMapper to find connected subgraph
-        allocated = self.qubit_mapper.allocate_register(
-            register_type=register_type,
-            register_id=register_id,
-            size=required_qubits
-        )
-
-        # Map the actual qubit objects to physical indices
-        for local_idx, physical_qubit in enumerate(allocated):
-            qubit_obj = quantum_register[local_idx]
-            self.logical_to_physical_map[qubit_obj] = physical_qubit
-            self.qubit_register_map[physical_qubit] = register_id
 
     def _get_initial_layout(self, qc: QuantumCircuit) -> List[int]:
 
@@ -436,7 +413,7 @@ class SQTMCompiler:
                 cr_bell=cr_bell,
             )
 
-            # tick() internally alternates location (ORIGINAL?BACKUP) and resets odometer
+            # tick() internally alternates location (ORIGINAL→BACKUP) and resets odometer
             new_location = self.qpc.tick(logical_addr)
             self.current_c[logical_addr] = 0
             self.current_t[logical_addr] = 0.0
@@ -592,4 +569,3 @@ class SQTMCompiler:
             "logical_to_physical_map": self.logical_to_physical_map,
             "available_qubits": len(self.qubit_mapper.available_qubits),
         }
-

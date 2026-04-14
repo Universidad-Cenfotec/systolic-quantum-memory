@@ -4,7 +4,7 @@
 # Authors: Danny Valerio-Ramírez & Santiago Núñez-Corrales
 # ============================================================
 
-from typing import cast, Dict, Tuple
+from typing import cast, Dict, Optional, Tuple
 from qiskit import QuantumCircuit
 from qiskit.circuit import QuantumRegister, ClassicalRegister, Clbit
 
@@ -23,8 +23,8 @@ class SystolicTeleportation:
         qc: QuantumCircuit,
         source_reg: QuantumRegister,
         dest_reg: QuantumRegister,
-        ancilla_reg: QuantumRegister = None,
-        cr_bell: ClassicalRegister = None,
+        ancilla_reg: Optional[QuantumRegister] = None,
+        cr_bell: Optional[ClassicalRegister] = None,
     ) -> QuantumCircuit:
         """
         Aplica el protocolo de tele-refresco (teleportación cuántica) en el circuito.

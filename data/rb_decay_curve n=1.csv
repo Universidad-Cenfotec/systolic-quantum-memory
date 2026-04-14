@@ -1,0 +1,31 @@
+SQTM RB Characterization Results
+Timestamp,2026-04-13T19:21:30.154105
+Backend,fake_kyiv
+Architecture,4 registers * 1 qubits = 4 total qubits
+Hilbert Dimension,d = 2^4 = 2
+Native Gate,ECR
+
+Magesan Fit Parameters
+A (SPAM contrast),0.477451
+p (process decay),0.695922
+B (asymptote),0.502116
+r_empirical,0.152039
+p_swap_theory,0.105456
+
+m (SWAP cycles),F_emp (fidelity),F_fit (fitted)
+0,0.982250,0.979567
+1,0.830500,0.834384
+2,0.733500,0.733349
+4,0.606750,0.614104
+6,0.572250,0.556353
+8,0.531000,0.528383
+10,0.502750,0.514837
+15,0.512500,0.504192
+20,0.513500,0.502455
+25,0.498250,0.502171
+30,0.506000,0.502125
+40,0.504500,0.502116
+50,0.490000,0.502116
+60,0.480500,0.502116
+80,0.509500,0.502116
+100,0.508750,0.502116

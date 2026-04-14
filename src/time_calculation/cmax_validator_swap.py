@@ -194,7 +194,59 @@ class CMaxValidator:
         if plot_path is not None:
             self._plot_rb_curve(m_arr, y_arr, popt, plot_path)
 
+        # -- Save results to CSV -----------------------------------------------
+        csv_path = plot_path.replace('.png', '.csv').replace('results', 'data') if plot_path else "data/rb_characterization_swap.csv"
+        self._save_rb_results_to_csv(m_arr, y_arr, popt, csv_path)
+
         return popt
+
+    # -- Save RB results to CSV -----------------------------------------------
+
+    def _save_rb_results_to_csv(
+        self,
+        m_arr: np.ndarray,
+        y_data: np.ndarray,
+        popt: np.ndarray,
+        csv_path: str,
+    ) -> None:
+        """Save RB characterization results to CSV file."""
+        import csv
+        from datetime import datetime
+        
+        os.makedirs(os.path.dirname(csv_path) if os.path.dirname(csv_path) else ".", exist_ok=True)
+        
+        A_fit, p_fit, B_fit = popt
+        r_empirico = ((self.d - 1) * (1.0 - p_fit)) / self.d
+        
+        with open(csv_path, 'w', newline='') as f:
+            writer = csv.writer(f)
+            
+            # Write header with metadata
+            writer.writerow(["SQTM RB Characterization Results (SWAP protocol)"])
+            writer.writerow(["Timestamp", datetime.now().isoformat()])
+            writer.writerow(["Backend", self.backend.name])
+            writer.writerow(["Architecture", f"2 registers * {self.N} qubits = {2*self.N} total qubits"])
+            writer.writerow(["Hilbert Dimension", f"d = 2^{self.N} = {self.d}"])
+            writer.writerow(["Native Gate", self.native_2q_gate.upper()])
+            writer.writerow([])
+            
+            # Write fit parameters
+            writer.writerow(["Magesan Fit Parameters"])
+            writer.writerow(["A (SPAM contrast)", f"{A_fit:.6f}"])
+            writer.writerow(["p (process decay)", f"{p_fit:.6f}"])
+            writer.writerow(["B (asymptote)", f"{B_fit:.6f}"])
+            writer.writerow(["r_empirical", f"{r_empirico:.6f}"])
+            writer.writerow(["p_swap_theory", f"{self.p_swap_teorico:.6f}"])
+            writer.writerow([])
+            
+            # Write data columns
+            writer.writerow(["m (SWAP cycles)", "F_emp (fidelity)", "F_fit (fitted)"])
+            
+            for m, f_emp in zip(m_arr, y_data):
+                f_fit = rb_decay_model(m, A_fit, p_fit, B_fit)
+                writer.writerow([f"{int(m):d}", f"{f_emp:.6f}", f"{f_fit:.6f}"])
+        
+        print(f"\n  [CSV] RB results saved to: {csv_path}")
 
     # -- RB results report -----------------------------------------------------
 
@@ -363,7 +415,7 @@ class CMaxValidator:
 
 if __name__ == "__main__":
     # 1. DEFINE THE ARCHITECTURE (N = Word width)
-    N_qubits = 3
+    N_qubits = 1
     validator = CMaxValidator(N=N_qubits)
 
     # -- Phase B.1: Complete RB characterization -------------------------------

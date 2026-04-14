@@ -1,4 +1,4 @@
-# Systolic Quantum Teleportation Memory (SQTM)
+# Systolic Quantum Memory (SQM)
 
 **Authors:** Danny Valerio-Ramírez (CENFOTEC) · Santiago Núñez-Corrales (UIUC)
 
@@ -9,10 +9,10 @@ Quantum memory architecture based on systolic teleportation to mitigate decohere
 ## Project Structure
 
 ```
-SQTM/
+SQM/
 ├── src/                       # Source code (compilers & quantum circuits)
 │   ├── __init__.py
-│   ├── comparison.py                     # Comparative analysis (SQTM vs SWAP)
+│   ├── comparison.py                     # Comparative analysis (SQM vs SWAP)
 │   ├── modular_circuits/                 # Core circuit components
 │   │   ├── __init__.py
 │   │   ├── qpc.py                        # BipartiteQPC (memory register abstraction)
@@ -25,12 +25,12 @@ SQTM/
 │   │   ├── work_phase.py                 # SystolicWorkPhase (NISQ SWAP)
 │   ├── simulator/                        # Noisy quantum simulators
 │   │   ├── __init__.py
-│   │   ├── sqtm_simulator.py             # SQTMCompiler (dual-register memory)
+│   │   ├── sqm_simulator.py              # SQMCompiler (dual-register memory)
 │   │   └── swap_simulator.py             # SwapCompiler (single-register baseline)
 │   └── time_calculation/                 # Performance metrics & validation
 │       ├── __init__.py
 │       ├── tmax_calculator.py            # Passive desgaste threshold
-│       ├── cmax_validator.py             # Active desgaste (SQTM)
+│       ├── cmax_validator.py             # Active desgaste (SQM)
 │       └── cmax_validator_swap.py        # Active desgaste (SWAP)
 ├── tests/                                # Test suite
 │   ├── __init__.py
@@ -84,14 +84,14 @@ pip install -r requirements.txt
 
 ### 3. Run Comparative Analysis
 
-**Full SQTM ↔ SWAP comparison:**
+**Full SQM ↔ SWAP comparison:**
 ```powershell
 python main.py
 ```
 
 **What it does:**
 - Loads workload definitions and compiler parameters
-- Runs SQTM Compiler (dual-register memory with teleportation)
+- Runs SQM Compiler (dual-register memory with teleportation)
 - Runs SWAP Compiler (single-register baseline)
 - Compares fidelity, gate cost, resource usage
 - Outputs results to console
@@ -138,16 +138,16 @@ Validates the quantum processor component abstraction.
 
 | Module | Class | Purpose |
 |--------|-------|---------|
-| `sqtm_simulator.py` | `SQTMCompiler` | Dual-register + teleportation + noise |
+| `sqm_simulator.py` | `SQMCompiler` | Dual-register + teleportation + noise |
 | `swap_simulator.py` | `SwapCompiler` | Single-register baseline + SWAP gates |
-| `comparison.py` | `run_full_comparison()` | Orchestrate SQTM ↔ SWAP analysis |
+| `comparison.py` | `run_full_comparison()` | Orchestrate SQM ↔ SWAP analysis |
 
 ### Hardware Mapping
 
 | Module | Class | Purpose |
 |--------|-------|---------|
 | `qubit_mapper.py` | `QubitMapper` | FakeKyiv backend + chain topology allocation |
-| `cmax_validator.py` | `CmaxValidator` | Active desgaste threshold (SQTM) |
+| `cmax_validator.py` | `CmaxValidator` | Active desgaste threshold (SQM) |
 | `cmax_validator_swap.py` | `CmaxValidatorSwap` | Active desgaste threshold (SWAP) |
 | `tmax_calculator.py` | `TmaxCalculator` | Passive desgaste from T1/T2 times |
 
@@ -165,7 +165,7 @@ Validates the quantum processor component abstraction.
 
 ## Architecture Overview
 
-### SQTM Compiler (Dual-Register Memory)
+### SQM Compiler (Dual-Register Memory)
 
 ```
 Workload: [WRITE, READ, IDLE, ...] ──→ Parser
@@ -209,7 +209,7 @@ Workload: [WRITE, READ, IDLE, ...] ──→ Parser
 ```
 
 ### Key Difference
-- **SQTM:** 2*R + 1 qubits (memory with backup + operation register)
+- **SQM:** 2*R + 1 qubits (memory with backup + operation register)
 - **SWAP:** R + 1 qubits (simple baseline)
 - **Fair comparison:** Same noise model, backend, seed initialization
 
@@ -222,7 +222,7 @@ Workload: [WRITE, READ, IDLE, ...] ──→ Parser
 $ python main.py
 
 ======================================================================
-SQTM Compiler - Dual-Register Memory with Quantum Teleportation
+SQM Compiler - Dual-Register Memory with Quantum Teleportation
 Target state: |0⟩
 ======================================================================
 
@@ -231,7 +231,7 @@ Target state: |0⟩
   Depth: 42
   Size: 28
 
-[SQTM Results]
+[SQM Results]
   Fidelity: 0.8532
   Total Shots: 256
   Top 5 outcomes:
@@ -259,7 +259,7 @@ Target state: |0⟩
 
 [Comparative Analysis - Workload 1]
 +─────────────────────────┬─────────┬─────────+
-│ Metric                  │ SQTM    │ SWAP    │
+│ Metric                  │ SQM     │ SWAP    │
 ├─────────────────────────┼─────────┼─────────┤
 │ Fidelity                │ 85.32%  │ 78.21%  │
 │ Qubits                  │ 5       │ 3       │
@@ -305,7 +305,7 @@ Target state: |0⟩
 - Kept only essential documentation
 
 ✅ **Code Organization** — 8 files reviewed and optimized
-- sqtm_simulator.py & swap_simulator.py: Fixed noise model comments
+- sqm_simulator.py & swap_simulator.py: Fixed noise model comments
 - qubit_mapper.py: Removed commented debug code
 - memory_register.py & operation_register.py: Simplified structure
 - All files: Ensured accuracy between code and comments
@@ -320,6 +320,6 @@ Target state: |0⟩
 | **A — Building Blocks** | Registers, teleportation, work phase circuits | ✅ Complete |
 | **B — Hardware Mapping** | QubitMapper, chain topology allocation | ✅ Complete |
 | **C — Noise Model** | T1/T2 from FakeKyiv, thermal relaxation | ✅ Complete |
-| **D — Comparative Analysis** | SQTM ↔ SWAP compiler validation & metrics | ✅ Complete |
+| **D — Comparative Analysis** | SQM ↔ SWAP compiler validation & metrics | ✅ Complete |
 | **E — Real Hardware** | Execution on IBM Kyiv/Brisbane (pending quota) | ⏳ Pending |
 | **F — Optimization** | ML-based adaptive thresholds, topological improvements | 🔲 Future |

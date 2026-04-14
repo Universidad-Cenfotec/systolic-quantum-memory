@@ -43,34 +43,6 @@ class QubitMapper:
                         break
         return list(visited) if len(visited) == size else None
 
-    def find_contiguous_block(self, size: int) -> Optional[List[int]]:
-        available_subgraph = self.graph.subgraph(self.available_qubits).copy()
-        degrees = dict(available_subgraph.degree())
-        if not degrees:
-            return None
-        start = max(degrees, key=lambda x: degrees[x])
-        return self.find_connected_subgraph(size, preferred_start=start)
-
-    def allocate_register(self, register_type: str, register_id: str, size: int, preferred_location: Optional[List[int]] = None) -> List[int]:
-        """Allocate a register by finding a connected subgraph of desired size."""
-        if preferred_location:
-            if len(preferred_location) == size and all(q in self.available_qubits for q in preferred_location):
-                subgraph = self.graph.subgraph(preferred_location)
-                try:
-                    allocated = preferred_location if nx.is_connected(subgraph) else self.find_connected_subgraph(size)
-                except:
-                    allocated = self.find_connected_subgraph(size)
-            else:
-                allocated = self.find_connected_subgraph(size)
-        else:
-            allocated = self.find_connected_subgraph(size)
-        if allocated is None:
-            raise RuntimeError(f"Cannot allocate {size} qubits for {register_id}.")
-        for qubit in allocated:
-            self.available_qubits.discard(qubit)
-        self.allocation_map[register_id] = allocated
-        return allocated
-
     def allocate_chain_topology(self, chain_config: List[Tuple[str, int]]) -> Dict[str, List[int]]:
         is_sqtm = any('tele_ancilla' in reg_name for reg_name, _ in chain_config)
         R = n = 0

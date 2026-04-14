@@ -1,5 +1,5 @@
 # ============================================================
-# SQTM Research Project — Main Entry Point
+# SQM Research Project — Main Entry Point
 # ============================================================
 
 import sys
@@ -15,8 +15,8 @@ from src.comparison import run_full_comparison
 # ══════════════════════════════════════════════════════════════════════════════
 
 # Compiler Configuration
-R = 2          # Number of memory registers
-n = 2          # Qubits per register (quantum word width)
+R = 1          # Number of memory registers
+n = 1          # Qubits per register (quantum word width)
 c_max = 2       # Gate cost threshold
 t_max_ns = 40000 # Time threshold (nanoseconds)
 
@@ -29,12 +29,11 @@ initial_state = 1  # 0 = |0⟩ state, 1 = |1⟩ state
 
 # Test Workloads
 workload1 = [
-    "READ_0",
-
+    
 ]
 
 workload2 = [
-    "READ_0",  "READ_0",
+    "READ_0", 
 
     
 ]
@@ -82,7 +81,7 @@ def main():
     Main entry point - Execute comparative analysis with defined parameters.
     """
     print("\n" + "=" * 70)
-    print("SQTM Research Project - Comparative Analysis")
+    print("SQM Research Project - Comparative Analysis")
     print("=" * 70)
     print(f"\n[Configuration]")
     print(f"  Memory Registers (R): {R}")
@@ -96,12 +95,12 @@ def main():
     # Run comparative analysis with all workloads
     workloads = [
         (f"Workload 1 {len(workload1)} instructions", workload1),
-        #(f"Workload 2 {len(workload2)} instructions", workload2),
-        #(f"Workload 3 {len(workload3)} instructions", workload3),
-        #(f"Workload 4 {len(workload4)} instructions", workload4),
-        #(f"Workload 5 {len(workload5)} instructions", workload5),
-        #(f"Workload 6 {len(workload6)} instructions", workload6),
-        #(f"Workload 7 {len(workload7)} instructions", workload7),
+        (f"Workload 2 {len(workload2)} instructions", workload2),
+        (f"Workload 3 {len(workload3)} instructions", workload3),
+        (f"Workload 4 {len(workload4)} instructions", workload4),
+        (f"Workload 5 {len(workload5)} instructions", workload5),
+        (f"Workload 6 {len(workload6)} instructions", workload6),
+        (f"Workload 7 {len(workload7)} instructions", workload7),
     ]
 
     print("\n[Workloads]")
