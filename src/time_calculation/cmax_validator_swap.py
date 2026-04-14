@@ -15,10 +15,12 @@ from qiskit_ibm_runtime.fake_provider import FakeKyiv
 # Handle imports for both direct execution and module import
 try:
     from src.functions.qubit_mapper import QubitMapper
+    from src.utils.measurement_parser import MeasurementParser
 except ModuleNotFoundError:
     # Add parent directory to path for direct script execution
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
     from src.functions.qubit_mapper import QubitMapper
+    from src.utils.measurement_parser import MeasurementParser
 
 
 # =============================================================================
@@ -139,8 +141,18 @@ class CMaxValidator:
         job  = sim.run(qc_t, shots=shots)
         counts: dict[str, int] = job.result().get_counts()
 
-        zero_state = "0" * self.N
-        return counts.get(zero_state, 0) / shots
+        # Measure fidelity: count instances where all N qubits are in |0> state
+        # Uses unified measurement parser for robust extraction (handles variable N)
+        target_state = "0" * self.N
+        fidelity_count = 0
+        
+        for bitstring, count in counts.items():
+            # Extract first N bits safely (handles spaces and format changes)
+            measured_bits = MeasurementParser.extract_first_n_bits(bitstring, self.N)
+            if measured_bits == target_state:
+                fidelity_count += count
+        
+        return fidelity_count / shots
 
     # -- RB Characterization (Magesan) -----------------------------------------
 
@@ -415,7 +427,7 @@ class CMaxValidator:
 
 if __name__ == "__main__":
     # 1. DEFINE THE ARCHITECTURE (N = Word width)
-    N_qubits = 1
+    N_qubits = 2
     validator = CMaxValidator(N=N_qubits)
 
     # -- Phase B.1: Complete RB characterization -------------------------------

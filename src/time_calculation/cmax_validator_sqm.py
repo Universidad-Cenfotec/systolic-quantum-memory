@@ -18,11 +18,13 @@ from qiskit_ibm_runtime.fake_provider import FakeKyiv
 try:
     from src.functions.qubit_mapper import QubitMapper
     from src.functions.teleportation import SystolicTeleportation
+    from src.utils.measurement_parser import MeasurementParser
 except ModuleNotFoundError:
     # Add parent directory to path for direct script execution
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
     from src.functions.qubit_mapper import QubitMapper
     from src.functions.teleportation import SystolicTeleportation
+    from src.utils.measurement_parser import MeasurementParser
 
 
 # =============================================================================
@@ -220,18 +222,25 @@ class CMaxValidator:
 
         # --------- DIRECT VERIFICATION OF TELEPORTED STATUS
         
+        # Build layout for register extraction (Little-Endian aware)
+        # Registers added in order: cr_lb (first), then cr_bell (second)
+        # Qiskit Little-Endian: last added appears first in bitstring
+        register_layout = MeasurementParser.build_register_layout_from_order(
+            register_names=["cr_lb", "cr_bell"],
+            register_sizes=[self.N, 2 * self.N],
+            reverse_for_endianness=True
+        )
+        
         fidelity_count = 0
         target_state = '0' * self.N
         
         for bitstring, count in counts.items():
-            bitstring_clean = bitstring.replace(' ', '')
-            bitstring_rev = bitstring_clean[::-1]  
-            
-            # Extract Link Bob bits (final destination after teleportation)
-            # Bitstring layout: [cr_bell: 2N bits (from build_circuit)] + [cr_lb: N bits]
-            # Reversed: [cr_lb: N bits] + [cr_bell: 2N bits]
-            # cr_lb is at position [0:N] after reversal
-            lb_bits = bitstring_rev[0 : self.N]
+            # Extract Link Bob bits using the register layout (endianness-safe)
+            lb_bits = MeasurementParser.extract_register_bits(
+                bitstring, 
+                "cr_lb", 
+                register_layout
+            )
             
             if lb_bits == target_state:
                 fidelity_count += count
@@ -530,7 +539,7 @@ class CMaxValidator:
 
 if __name__ == "__main__":
     # -- DEFINE THE ARCHITECTURE (N = Word width per register) -----------------
-    N_qubits = 1
+    N_qubits = 2
     validator = CMaxValidator(N=N_qubits)
     
 

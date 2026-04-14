@@ -24,6 +24,7 @@ from src.modular_circuits.memory_register import StorageRegister
 from src.modular_circuits.operation_register import OperationRegister
 from src.functions.work_phase import SystolicWorkPhase
 from src.functions.qubit_mapper import QubitMapper
+from src.utils.measurement_parser import MeasurementParser
 
 
 class SwapCompiler:

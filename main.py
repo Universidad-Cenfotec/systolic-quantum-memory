@@ -15,8 +15,8 @@ from src.comparison import run_full_comparison
 # ══════════════════════════════════════════════════════════════════════════════
 
 # Compiler Configuration
-R = 1          # Number of memory registers
-n = 1          # Qubits per register (quantum word width)
+R = 2          # Number of memory registers
+n = 2          # Qubits per register (quantum word width)
 c_max = 2       # Gate cost threshold
 t_max_ns = 40000 # Time threshold (nanoseconds)
 

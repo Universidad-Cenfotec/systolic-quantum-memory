@@ -26,6 +26,7 @@ from src.modular_circuits.operation_register import OperationRegister
 from src.functions.work_phase import SystolicWorkPhase
 from src.functions.teleportation import SystolicTeleportation
 from src.functions.qubit_mapper import QubitMapper
+from src.utils.measurement_parser import MeasurementParser
 
 
 class SQMCompiler:
@@ -151,7 +152,7 @@ class SQMCompiler:
     # --------------------------------------------------------------
     # QUBIT ALLOCATION & PHYSICAL MAPPING
     # --------------------------------------------------------------
-    # MEASUREMENT OUTCOME PARSING (Unified Parser)
+    # MEASUREMENT OUTCOME PARSING (Unified via MeasurementParser)
     # --------------------------------------------------------------
 
     @staticmethod
@@ -159,15 +160,16 @@ class SQMCompiler:
         """
         Parse measurement outcome string from Qiskit, handling multiple registers.
         
+        Uses unified MeasurementParser utility for endianness-aware extraction.
+        Returns the first register after splitting on spaces.
+        
         In SQM: outcome contains multiple spaces (e.g., "data_bits bell_bits")
         In SWAP: outcome contains single register with no spaces
         
-        Returns: First register (measurement bits) after cleaning
+        Returns: First register (measurement bits) after splitting
         """
-        cleaned = outcome.strip()
-        # If multiple registers, extract first one; otherwise return as-is
-        registers = cleaned.split()
-        return registers[0] if registers else cleaned
+        registers = MeasurementParser.split_registers(outcome)
+        return registers[0] if registers else ""
 
     # --------------------------------------------------------------
 
