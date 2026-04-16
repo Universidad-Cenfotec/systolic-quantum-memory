@@ -5,8 +5,13 @@
 
 from typing import List, Dict, Set, Optional, Tuple
 import networkx as nx
+
+# Configure matplotlib to use non-GUI backend BEFORE importing pyplot
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
+
 import os
 
 class QubitMapper:

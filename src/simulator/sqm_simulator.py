@@ -14,11 +14,11 @@ import random
 # Ensure project root is in path for direct execution
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
+from typing import Optional
+
 from qiskit import QuantumCircuit, QuantumRegister, ClassicalRegister, transpile
 from qiskit.circuit import Instruction
 from qiskit_ibm_runtime.fake_provider import FakeKyiv
-from qiskit_aer import AerSimulator
-from qiskit_aer.noise import NoiseModel, thermal_relaxation_error
 
 from src.modular_circuits.qpc import QPC, MemLocation
 from src.modular_circuits.memory_register import StorageRegister
@@ -27,6 +27,7 @@ from src.functions.work_phase import SystolicWorkPhase
 from src.functions.teleportation import SystolicTeleportation
 from src.functions.qubit_mapper import QubitMapper
 from src.utils.measurement_parser import MeasurementParser
+from src.simulator.aer_simulator_backend import AerSimulatorBackend, BackendInterface
 
 
 class SQMCompiler:
@@ -40,7 +41,7 @@ class SQMCompiler:
         n: int,
         c_max: int,
         t_max_ns: float,
-        backend_name: str = "FakeKyiv",
+        backend_manager: BackendInterface,
         initial_state: int = 0,
     ):
         
@@ -49,40 +50,18 @@ class SQMCompiler:
         self.c_max = c_max
         self.t_max_ns = t_max_ns
         self.initial_state = initial_state
-
-        # ----------------------------------------------------------
-        # 1. Initialize backend and qubit resources
-        # ----------------------------------------------------------
-        self.backend = FakeKyiv()
-        self.noise_model = NoiseModel.from_backend(self.backend)
-
-        # ----------------------------------------------------------
-        # 1b. Create thermal relaxation error linked to 'id' gate
-        # ----------------------------------------------------------
-        # T1 and T2 times (worst-case 10th percentile parameters)
-        t1_ns = 149_149   # 149.149 μs (10th percentile)
-        t2_ns = 38_194    # 38.194 μs (10th percentile - critical limiting time)
-        self.time_idle_ns = 7000  # One IDLE unit = 700 ns (identity gate duration)
         
-        # Create and apply thermal relaxation error ONLY to ID gates (passive decay)
-        idle_error = thermal_relaxation_error(t1_ns, t2_ns, self.time_idle_ns)
-        num_physical_qubits = self.backend.configuration().n_qubits
-        for q in range(num_physical_qubits):
-            self.noise_model.add_quantum_error(idle_error, 'id', [q], warnings=False)
-
-        backend_noise = NoiseModel.from_backend(self.backend)
-        for gate in ['x', 'z', 'h', 'cx', 'measure', 'reset']:
-            if gate in backend_noise._default_quantum_errors:
-                self.noise_model.add_all_qubit_quantum_error(
-                    backend_noise._default_quantum_errors[gate], gate
-                )
+        # Dependency Injection: Backend manager must be provided from main.py
+        self.backend_manager = backend_manager
         
-        #print(f"[SQM Compiler] Thermal relaxation configured: T1={t1_ns/1000:.1f}μs, T2={t2_ns/1000:.1f}μs")
-        #print(f"[SQM Compiler] Idle period per unit: {self.time_idle_ns} ns")
-        #print(f"[SQM Compiler] Applied thermal decay to 'id' gate on first {num_physical_qubits} qubits")
+        # Retrieve base backend device from backend manager for qubit allocation
+        self.backend = self.backend_manager.get_backend_device()
 
         # Initialize QubitMapper for intelligent qubit allocation
         self.qubit_mapper = QubitMapper(self.backend)
+        
+        # Store thermal parameters for use in compile_workload
+        self.time_idle_ns = self.backend_manager.time_idle_ns
         
         self.logical_to_physical_map: Dict[Any, int] = {}
         """
@@ -429,11 +408,25 @@ class SQMCompiler:
             print(f"    [Tele-Refresh] Mem[{logical_addr}] now stored in {new_location.value}")
 
     # --------------------------------------------------------------
-    # SIMULATION WITH NOISE
+    # EXECUTION VIA BACKEND MANAGER
     # --------------------------------------------------------------
 
-    def run_simulation(self, circuit: QuantumCircuit, shots: int = 1024) -> Dict[str, Any]:
- 
+    def execute(self, circuit: QuantumCircuit, shots: int = 1024) -> Dict[str, Any]:
+        """
+        Execute the quantum circuit via the injected backend manager.
+        
+        Parameters
+        ----------
+        circuit : QuantumCircuit
+            Compiled quantum circuit ready for execution
+        shots : int, optional
+            Number of circuit executions (default: 1024)
+        
+        Returns
+        -------
+        Dict[str, Any]
+            Execution results including fidelity, counts, etc.
+        """
 
         # ----------------------------------------------------------
         # SEED SETUP FOR REPRODUCIBILITY
@@ -441,8 +434,8 @@ class SQMCompiler:
         random.seed(42)
         np.random.seed(42)
         
-        print(f"\n[Simulation] Preparing circuit for {shots} shots")
-        print(f"[Simulation] Seeds configured for reproducibility")
+        print(f"\n[Execution] Preparing circuit for {shots} shots")
+        print(f"[Execution] Seeds configured for reproducibility")
 
         try:
             qc_measured = circuit.copy()
@@ -482,14 +475,6 @@ class SQMCompiler:
             # Note: qc_measured.draw(output="text") produces Unicode chars, skip for Windows compat
             # print(qc_measured.draw(output="text"))
            
-            
-            # Initialize simulator with MPS method and fixed seed
-            simulator = AerSimulator(
-                noise_model=self.noise_model, 
-                method='matrix_product_state',
-                seed_simulator=42
-            )
-            
             # Transpile with seed for reproducibility
             qc_transpiled = transpile(
                 qc_measured,
@@ -500,9 +485,9 @@ class SQMCompiler:
             )
             #print(qc_transpiled.draw(output="text"))
 
-            print(f"[Simulator] Running {shots} shots with fixed seed...")
-            job = simulator.run(qc_transpiled, shots=shots, seed=42)
-            result = job.result()
+            print(f"[Execution] Sending circuit to Backend Manager...")
+            # Execute via backend manager (no more manual simulator instantiation)
+            result = self.backend_manager.run(qc_transpiled, shots=shots, seed=42)
             
             counts = result.get_counts()
             total_counts = sum(counts.values())
@@ -543,7 +528,7 @@ class SQMCompiler:
             }
 
         except Exception as e:
-            print(f"[ERROR] Simulation failed: {e}")
+            print(f"[ERROR] Execution failed: {e}")
             import traceback
             traceback.print_exc()
             # Return graceful degradation result

@@ -5,9 +5,14 @@
 
 import sys
 import os
+
+# Configure matplotlib to use non-GUI backend BEFORE importing pyplot
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+
 import random
 import numpy as np
-import matplotlib.pyplot as plt
 import csv
 from datetime import datetime
 from typing import List, Tuple, Dict, Any, Optional
@@ -15,6 +20,7 @@ from typing import List, Tuple, Dict, Any, Optional
 # Ensure project root is in path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from src.simulator.aer_simulator_backend import BackendInterface
 from src.simulator.sqm_simulator import SQMCompiler
 from src.simulator.swap_simulator import SwapCompiler
 from src.functions.qubit_mapper import QubitMapper
@@ -25,7 +31,8 @@ from src.functions.qubit_mapper import QubitMapper
 # ══════════════════════════════════════════════════════════════════════════════
 
 def run_sqm_compiler(R: int, n: int, c_max: int, t_max_ns: float, 
-                     workload: List[str], shots: int, initial_state: int = 0) -> Optional[Dict[str, Any]]:
+                     workload: List[str], shots: int, backend_manager: BackendInterface,
+                     initial_state: int = 0) -> Optional[Dict[str, Any]]:
 
     # ──────────────────────────────────────────────────────────
     # SEED INITIALIZATION - For global reproducibility
@@ -39,8 +46,9 @@ def run_sqm_compiler(R: int, n: int, c_max: int, t_max_ns: float,
     print(f"Target state: {state_label}")
     print("=" * 70)
 
-    # Create compiler with initial state parameter
-    sqm = SQMCompiler(R=R, n=n, c_max=c_max, t_max_ns=t_max_ns, initial_state=initial_state)
+    # Create compiler with optional backend manager (Dependency Injection)
+    sqm = SQMCompiler(R=R, n=n, c_max=c_max, t_max_ns=t_max_ns, 
+                      backend_manager=backend_manager, initial_state=initial_state)
 
     # Display workload
     print(f"\n[Workload] Executing {len(workload)} instructions:")
@@ -65,7 +73,8 @@ def run_sqm_compiler(R: int, n: int, c_max: int, t_max_ns: float,
     print("-" * 70)
 
     try:
-        results = sqm.run_simulation(circuit, shots=shots)
+        # Execute via backend manager (new method name: execute)
+        results = sqm.execute(circuit, shots=shots)
         
         print(f"\n[SQM Results]")
         print(f"  Fidelity: {results['fidelity']:.4f}")
@@ -79,14 +88,15 @@ def run_sqm_compiler(R: int, n: int, c_max: int, t_max_ns: float,
         return results
 
     except Exception as e:
-        print(f"[Error] SQM simulation failed: {e}")
+        print(f"[Error] SQM execution failed: {e}")
         import traceback
         traceback.print_exc()
         return None
 
 
 def run_swap_compiler(R: int, n: int, c_max: int, t_max_ns: float,
-                     workload: List[str], shots: int, initial_state: int = 0) -> Optional[Dict[str, Any]]:
+                     workload: List[str], shots: int, backend_manager: BackendInterface,
+                     initial_state: int = 0) -> Optional[Dict[str, Any]]:
 
     # ──────────────────────────────────────────────────────────
     # SEED INITIALIZATION - For global reproducibility
@@ -100,8 +110,9 @@ def run_swap_compiler(R: int, n: int, c_max: int, t_max_ns: float,
     print(f"Target state: {state_label}")
     print("=" * 70)
 
-    # Create compiler with initial state parameter
-    swap = SwapCompiler(R=R, n=n, c_max=c_max, t_max_ns=t_max_ns, backend_name="FakeKyiv", initial_state=initial_state)
+    # Create compiler with optional backend manager (Dependency Injection)
+    swap = SwapCompiler(R=R, n=n, c_max=c_max, t_max_ns=t_max_ns, 
+                        backend_manager=backend_manager, initial_state=initial_state)
 
     # Display workload
     print(f"\n[Workload] Executing {len(workload)} instructions:")
@@ -126,7 +137,8 @@ def run_swap_compiler(R: int, n: int, c_max: int, t_max_ns: float,
     print("-" * 70)
 
     try:
-        results = swap.run_simulation(circuit, shots=shots)
+        # Execute via backend manager (new method name: execute)
+        results = swap.execute(circuit, shots=shots)
         
         print(f"\n[SWAP Results]")
         print(f"  Fidelity: {results['fidelity']:.4f}")
@@ -140,7 +152,7 @@ def run_swap_compiler(R: int, n: int, c_max: int, t_max_ns: float,
         return results
 
     except Exception as e:
-        print(f"[Error] SWAP simulation failed: {e}")
+        print(f"[Error] SWAP execution failed: {e}")
         import traceback
         traceback.print_exc()
         return None
@@ -151,7 +163,8 @@ def run_swap_compiler(R: int, n: int, c_max: int, t_max_ns: float,
 # ══════════════════════════════════════════════════════════════════════════════
 
 def analyze_workload(R: int, n: int, c_max: int, t_max_ns: float,
-                    workload_name: str, workload: List[str], shots: int, initial_state: int = 0) -> Optional[Dict[str, Any]]:
+                    workload_name: str, workload: List[str], shots: int, backend_manager: BackendInterface,
+                    initial_state: int = 0) -> Optional[Dict[str, Any]]:
 
     print("\n" + "█" * 70)
     print("█" + " " * 68 + "█")
@@ -160,13 +173,15 @@ def analyze_workload(R: int, n: int, c_max: int, t_max_ns: float,
     print("█" + " " * 68 + "█")
     print("█" * 70)
 
-    # Run SQM
+    # Run SQM with injected backend
     sqm_results = run_sqm_compiler(R=R, n=n, c_max=c_max, t_max_ns=t_max_ns,
-                                     workload=workload, shots=shots, initial_state=initial_state)
+                                     workload=workload, shots=shots, initial_state=initial_state,
+                                     backend_manager=backend_manager)
 
-    # Run SWAP
+    # Run SWAP with injected backend
     swap_results = run_swap_compiler(R=R, n=n, c_max=c_max, t_max_ns=t_max_ns,
-                                     workload=workload, shots=shots, initial_state=initial_state)
+                                     workload=workload, shots=shots, initial_state=initial_state,
+                                     backend_manager=backend_manager)
 
     # Comparative Analysis
     print("\n" + "=" * 70)
@@ -218,7 +233,8 @@ def analyze_workload(R: int, n: int, c_max: int, t_max_ns: float,
 # ══════════════════════════════════════════════════════════════════════════════
 
 def run_full_comparison(R: int, n: int, c_max: int, t_max_ns: float,
-                       shots: int, workloads: List[Tuple[str, List[str]]], initial_state: int = 0) -> None:
+                       shots: int, workloads: List[Tuple[str, List[str]]], backend_manager: BackendInterface,
+                       initial_state: int = 0) -> None:
     
     # Summary tracking
     results = []
@@ -228,7 +244,8 @@ def run_full_comparison(R: int, n: int, c_max: int, t_max_ns: float,
     for idx, (workload_name, workload) in enumerate(workloads):
         result = analyze_workload(R=R, n=n, c_max=c_max, t_max_ns=t_max_ns,
                                  workload_name=workload_name, 
-                                 workload=workload, shots=shots, initial_state=initial_state)
+                                 workload=workload, shots=shots, initial_state=initial_state,
+                                 backend_manager=backend_manager)
         if result:
             results.append(result)
             
