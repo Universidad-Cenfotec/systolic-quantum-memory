@@ -20,7 +20,7 @@ from typing import List, Tuple, Dict, Any, Optional
 # Ensure project root is in path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.simulator.aer_simulator_backend import BackendInterface
+from src.backend.backend_interface import BackendInterface
 from src.simulator.sqm_simulator import SQMCompiler
 from src.simulator.swap_simulator import SwapCompiler
 from src.functions.qubit_mapper import QubitMapper

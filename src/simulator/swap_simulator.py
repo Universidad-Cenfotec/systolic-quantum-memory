@@ -14,18 +14,16 @@ import random
 # Ensure project root is in path for direct execution
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from typing import Optional
-
 from qiskit import QuantumCircuit, QuantumRegister, ClassicalRegister, transpile
 from qiskit.circuit import Instruction
-from qiskit_ibm_runtime.fake_provider import FakeKyiv
 
 from src.modular_circuits.memory_register import StorageRegister
 from src.modular_circuits.operation_register import OperationRegister
 from src.functions.work_phase import SystolicWorkPhase
 from src.functions.qubit_mapper import QubitMapper
 from src.utils.measurement_parser import MeasurementParser
-from src.simulator.aer_simulator_backend import AerSimulatorBackend, BackendInterface
+from src.backend.backend_interface import BackendInterface
+from src.backend.aer_simulator_backend import AerSimulatorBackend
 
 
 class SwapCompiler:
@@ -353,7 +351,7 @@ class SwapCompiler:
             initial_layout = self._get_initial_layout(qc_measured)
 
             # DEBUG: Uncomment below to visualize circuit before transpilation
-            # print(qc_measured.draw(output="text"))
+            print(qc_measured.draw(output="text"))
             print("[Noise Model] Extracting noise characteristics...")
             
             # Transpile with seed for reproducibility

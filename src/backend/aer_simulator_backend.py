@@ -5,82 +5,13 @@
 # ============================================================
 
 from typing import Any, Dict, Optional
-from abc import ABC, abstractmethod
 
 from qiskit import QuantumCircuit, transpile
 from qiskit_ibm_runtime.fake_provider import FakeKyiv
 from qiskit_aer import AerSimulator
 from qiskit_aer.noise import NoiseModel, thermal_relaxation_error
 
-
-class BackendInterface(ABC):
-    """
-    Abstract interface for quantum backends (local simulation or real hardware).
-    Enables flexible backend switching without modifying compiler logic.
-    
-    Attributes
-    ----------
-    time_idle_ns : float
-        Duration of one idle unit in nanoseconds (represents passive decoherence time)
-    """
-
-    @property
-    @abstractmethod
-    def time_idle_ns(self) -> float:
-        """
-        Duration of one idle unit in nanoseconds.
-        
-        Returns
-        -------
-        float
-            Idle period duration in ns
-        """
-        pass
-
-    @abstractmethod
-    def run(self, qc_transpiled: QuantumCircuit, shots: int, seed: int = 42) -> Any:
-        """
-        Execute a transpiled quantum circuit on the backend.
-
-        Parameters
-        ----------
-        qc_transpiled : QuantumCircuit
-            Transpiled circuit ready for execution
-        shots : int
-            Number of circuit executions
-        seed : int, optional
-            Random seed for reproducibility (default: 42)
-
-        Returns
-        -------
-        Any
-            Job result object (AerSimulator result for now)
-        """
-        pass
-
-    @abstractmethod
-    def get_backend_info(self) -> Dict[str, Any]:
-        """
-        Retrieve backend configuration information.
-
-        Returns
-        -------
-        Dict[str, Any]
-            Dictionary with backend details (name, num_qubits, noise model info)
-        """
-        pass
-
-    @abstractmethod
-    def get_backend_device(self) -> Any:
-        """
-        Get the backend device (e.g., FakeKyiv).
-        
-        Returns
-        -------
-        Any
-            Backend device object for qubit mapping and topology info
-        """
-        pass
+from src.backend.backend_interface import BackendInterface
 
 
 class AerSimulatorBackend(BackendInterface):
