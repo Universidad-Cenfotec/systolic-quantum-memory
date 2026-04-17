@@ -279,9 +279,17 @@ class SQMCompiler:
                 
                 # Apply thermal relaxation only to active qubits
                 # This represents realistic wear-down: only used qubits experience decoherence
-                for _ in range(num_units):
+                if self.backend_manager.use_native_delay:
+                    # Hardware backend: Use native delay instruction for precise timing
+                    print(f"    [Hardware] Using qc.delay() for native timing ({time_ns:.0f} ns)")
                     for qubit in active_qubits:
-                        qc.id(qubit)
+                        qc.delay(int(time_ns), qubit, unit='ns')
+                else:
+                    # Simulation backend: Use id() gates with attached thermal noise model
+                    print(f"    [Simulation] Using qc.id() gates with thermal noise model")
+                    for _ in range(num_units):
+                        for qubit in active_qubits:
+                            qc.id(qubit)
                 
                 # (Time tracking is handled by QPC via update_odometer() calls)
 

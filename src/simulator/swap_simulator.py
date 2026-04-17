@@ -244,15 +244,27 @@ class SwapCompiler:
                 
                 # Apply native identity gate to operation register
                 # The thermal_relaxation_error attached to 'id' will be applied
-                for _ in range(num_units):
-                    qc.id(qr_work)
-                
-                # Optional: Also apply to inactive memory registers for complete wear-down modeling
-                for i in range(self.R):
-                    qr_mem = self._built_registers[f"mem_{i}"]
-                    for _ in range(num_units):
+                if self.backend_manager.use_native_delay:
+                    # Hardware backend: Use native delay instruction for precise timing
+                    print(f"    [Hardware] Using qc.delay() for native timing ({time_ns:.0f} ns)")
+                    for qubit in qr_work:
+                        qc.delay(int(time_ns), qubit, unit='ns')
+                    # Also apply to memory registers for complete timing
+                    for i in range(self.R):
+                        qr_mem = self._built_registers[f"mem_{i}"]
                         for qubit in qr_mem:
-                            qc.id(qubit)
+                            qc.delay(int(time_ns), qubit, unit='ns')
+                else:
+                    # Simulation backend: Use id() gates with attached thermal noise model
+                    print(f"    [Simulation] Using qc.id() gates with thermal noise model")
+                    for _ in range(num_units):
+                        qc.id(qr_work)
+                    # Optional: Also apply to inactive memory registers for complete wear-down modeling
+                    for i in range(self.R):
+                        qr_mem = self._built_registers[f"mem_{i}"]
+                        for _ in range(num_units):
+                            for qubit in qr_mem:
+                                qc.id(qubit)
                 
             elif instruction.startswith("READ_"):
                 # READ instruction: READ_ij where ij is binary address

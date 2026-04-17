@@ -432,26 +432,12 @@ class IBMHardwareBackend(BackendInterface):
             print(f"[Execution] Circuit specs: {qc_transpiled.num_qubits} qubits, "
                   f"{qc_transpiled.num_clbits} clbits, depth={qc_transpiled.depth()}")
 
-            # Configure shots for SamplerV2
-            # In Qiskit Runtime V2, shots can be configured via options
-            try:
-                # Try V2 options-based approach first
-                if hasattr(self.sampler.options, 'shots'):
-                    self.sampler.options.shots = shots  # type: ignore
-                else:
-                    # Fallback: older API still accepts shots parameter directly
-                    pass
-            except (AttributeError, TypeError):
-                # If options approach fails, we'll pass shots directly
-                pass
+            # Configure shots for SamplerV2 V2 API
+            # In Qiskit Runtime 0.34+, the correct property is 'default_shots', not 'shots'
+            self.sampler.options.default_shots = shots  # type: ignore
 
             # Submit circuit to hardware
-            # Note: SamplerV2 primarily uses options for configuration
-            try:
-                job = self.sampler.run([qc_transpiled], shots=shots)
-            except TypeError:
-                # If shots not accepted as parameter, it's already configured via options
-                job = self.sampler.run([qc_transpiled])
+            job = self.sampler.run([qc_transpiled])
             job_id = job.job_id()
 
             print(f"[Execution] Job submitted with ID: {job_id}")

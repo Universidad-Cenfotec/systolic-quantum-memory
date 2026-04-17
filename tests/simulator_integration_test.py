@@ -6,6 +6,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.simulator.sqm_simulator import SQMCompiler
+from src.backends.aer_simulator_backend import AerSimulatorBackend
 
 def test_simulator_integration():
     """Test that simulators work with unified measurement parser."""
@@ -14,8 +15,11 @@ def test_simulator_integration():
     print("Integration Test: SQMCompiler with Unified MeasurementParser")
     print("=" * 70)
     
+    # Create backend manager (using default thermal parameters)
+    backend_manager = AerSimulatorBackend()
+    
     # Create compiler
-    compiler = SQMCompiler(R=2, n=1, c_max=5, t_max_ns=10000.0)
+    compiler = SQMCompiler(R=2, n=1, c_max=5, t_max_ns=10000.0, backend_manager=backend_manager)
     
     print("\n1. Compiler initialized successfully")
     print(f"   R={compiler.R}, n={compiler.n}")
