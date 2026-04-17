@@ -24,8 +24,8 @@ from src.functions.work_phase import SystolicWorkPhase
 from src.functions.teleportation import SystolicTeleportation
 from src.functions.qubit_mapper import QubitMapper
 from src.utils.measurement_parser import MeasurementParser
-from src.backend.backend_interface import BackendInterface
-from src.backend.aer_simulator_backend import AerSimulatorBackend
+from src.backends.backend_interface import BackendInterface
+from src.backends.aer_simulator_backend import AerSimulatorBackend
 
 
 class SQMCompiler:

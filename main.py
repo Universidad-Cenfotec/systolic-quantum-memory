@@ -13,7 +13,7 @@ matplotlib.use('Agg')
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from src.comparison import run_full_comparison
-from src.backend.aer_simulator_backend import AerSimulatorBackend
+from src.backends.aer_simulator_backend import AerSimulatorBackend
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Configuration Parameters
