@@ -8,7 +8,6 @@ from typing import Any, Dict, Optional
 
 from qiskit import QuantumCircuit
 from qiskit_ibm_runtime import QiskitRuntimeService, SamplerV2
-from qiskit_ibm_runtime.fake_provider import FakeKyiv
 
 from src.backends.backend_interface import BackendInterface
 
@@ -16,7 +15,12 @@ from src.backends.backend_interface import BackendInterface
 class MockResult:
     """
     Wrapper result object compatible with AerSimulator result format.
-    Extracts counts dictionary from SamplerV2 PubResult.
+    Extracts counts dictionary from SamplerV2 PubResult and reconstructs
+    the legacy combined bitstring format ("reg2 reg1") for the MeasurementParser.
+
+    CRITICAL: This preserves ALL classical registers and combines them with spaces,
+    exactly as Qiskit V1 AerSimulator did. This ensures complete compatibility with
+    MeasurementParser and downstream validators (cmax_validator_sqm.py, etc.).
     """
 
     def __init__(self, pub_result):
@@ -26,7 +30,7 @@ class MockResult:
         Parameters
         ----------
         pub_result : PubResult
-            Result from SamplerV2 execution
+            Result from SamplerV2 execution (DataBin with all classical registers)
         """
         self.pub_result = pub_result
         self._counts = None
@@ -35,80 +39,92 @@ class MockResult:
         """
         Extract counts dictionary from SamplerV2 result.
 
-        Attempts to extract from 'cr_final' register first, then falls back
-        to first available classical register if not found.
+        Reconstructs the Qiskit V1 format: combines all classical registers
+        with spaces (e.g., "0000 11") for compatibility with MeasurementParser.
 
         Returns
         -------
         Dict[str, int]
-            Dictionary of bitstrings to count values
+            Dictionary of combined bitstrings to count values
+            Example: {"0000 11": 1234, "0001 10": 456}
         """
         if self._counts is not None:
             return self._counts
 
         try:
-            # SamplerV2 returns measurements via .data attribute
             data = self.pub_result.data
 
-            # Try to extract 'cr_final' register first (if exists)
-            if hasattr(data, 'cr_final'):
-                measurements = data.cr_final
+            # Extract all classical register names from DataBin
+            if hasattr(data, 'keys'):
+                # If DataBin has keys() method (dict-like)
+                register_names = list(data.keys())
             else:
-                # Fallback: get first available register
-                # data is a NamedTuple with register names as attributes
-                register_names = list(data._fields) if hasattr(data, '_fields') else []
-                
-                if not register_names:
-                    raise ValueError(
-                        "[IBMHardwareBackend] No classical registers found in SamplerV2 result. "
-                        "Ensure circuit has measurements."
-                    )
+                # Fallback: extract non-private attributes
+                register_names = [attr for attr in dir(data) if not attr.startswith('_')]
 
-                first_register_name = register_names[0]
-                print(f"[IBMHardwareBackend] 'cr_final' not found. Using '{first_register_name}' instead.")
-                measurements = getattr(data, first_register_name)
+            if not register_names:
+                raise ValueError(
+                    "[IBMHardwareBackend] No classical registers found in SamplerV2 result. "
+                    "Ensure circuit has measurements."
+                )
 
-            # Convert measurements to counts dictionary
-            # SamplerV2 returns a BitArray, convert to bitstring counts
-            counts = {}
-            for bitstring, count in measurements.int_counts().items():
-                # Format as binary string with proper padding
-                bit_length = measurements.num_clbits
-                bitstr_key = format(bitstring, f'0{bit_length}b')
-                counts[bitstr_key] = count
+            # CRITICAL: Reverse register order to match Qiskit V1 endianness
+            # In V1: add_register(cr_lb); add_register(cr_bell)
+            # Output bitstring: "cr_bell_bits cr_lb_bits" (last register first)
+            register_names.reverse()
+            print(
+                f"[IBMHardwareBackend] Extracted registers (in output order): {register_names}"
+            )
 
-            self._counts = counts
-            return counts
+            # Extract raw bitstrings for each register (preserving all bits)
+            raw_bitstrings = []
+            for reg_name in register_names:
+                reg_data = getattr(data, reg_name)
+                # get_bitstrings() returns list of bitstrings, one per shot
+                # This preserves exact bit order without manual conversion
+                bitstrings = reg_data.get_bitstrings()
+                raw_bitstrings.append(bitstrings)
+
+            # Combine all registers for each shot
+            combined_counts = {}
+            num_shots = len(raw_bitstrings[0])
+
+            for shot_idx in range(num_shots):
+                # For this shot, concatenate all register bitstrings with space
+                combined_bitstring = " ".join(
+                    [raw_bitstrings[reg_idx][shot_idx] for reg_idx in range(len(register_names))]
+                )
+
+                # Aggregate counts (same combined bitstring may appear multiple times)
+                combined_counts[combined_bitstring] = (
+                    combined_counts.get(combined_bitstring, 0) + 1
+                )
+
+            self._counts = combined_counts
+            return combined_counts
 
         except Exception as e:
             raise RuntimeError(
-                f"[IBMHardwareBackend] Failed to extract counts from SamplerV2 result: {str(e)}"
+                f"[IBMHardwareBackend] Failed to extract and combine counts from SamplerV2: {str(e)}"
             )
 
 
 class MockJob:
     """
     Wrapper job object compatible with AerSimulator job interface.
-    Encapsulates SamplerV2 job and result extraction.
+    Provides simple result() interface for backward compatibility.
     """
 
-    def __init__(self, job_id: str, pub_result, shots: int):
+    def __init__(self, mock_result):
         """
         Initialize MockJob wrapper.
 
         Parameters
         ----------
-        job_id : str
-            Unique identifier for the job
-        pub_result : PubResult
-            Result from SamplerV2 execution
-        shots : int
-            Number of shots executed
+        mock_result : MockResult
+            Result wrapper with get_counts() interface
         """
-        self.job_id = job_id
-        self.pub_result = pub_result
-        self.shots = shots
-        self._result = None
+        self.mock_result = mock_result
 
     def result(self):
         """
@@ -119,9 +135,7 @@ class MockJob:
         MockResult
             Result wrapper with get_counts() interface
         """
-        if self._result is None:
-            self._result = MockResult(self.pub_result)
-        return self._result
+        return self.mock_result
 
 
 class IBMHardwareBackend(BackendInterface):
@@ -418,9 +432,26 @@ class IBMHardwareBackend(BackendInterface):
             print(f"[Execution] Circuit specs: {qc_transpiled.num_qubits} qubits, "
                   f"{qc_transpiled.num_clbits} clbits, depth={qc_transpiled.depth()}")
 
-            # Run using SamplerV2
-            # Note: SamplerV2 expects circuits to have classical bits for measurement
-            job = self.sampler.run([qc_transpiled], shots=shots)
+            # Configure shots for SamplerV2
+            # In Qiskit Runtime V2, shots can be configured via options
+            try:
+                # Try V2 options-based approach first
+                if hasattr(self.sampler.options, 'shots'):
+                    self.sampler.options.shots = shots  # type: ignore
+                else:
+                    # Fallback: older API still accepts shots parameter directly
+                    pass
+            except (AttributeError, TypeError):
+                # If options approach fails, we'll pass shots directly
+                pass
+
+            # Submit circuit to hardware
+            # Note: SamplerV2 primarily uses options for configuration
+            try:
+                job = self.sampler.run([qc_transpiled], shots=shots)
+            except TypeError:
+                # If shots not accepted as parameter, it's already configured via options
+                job = self.sampler.run([qc_transpiled])
             job_id = job.job_id()
 
             print(f"[Execution] Job submitted with ID: {job_id}")
@@ -432,7 +463,8 @@ class IBMHardwareBackend(BackendInterface):
             print(f"[Execution] Job {job_id} completed successfully")
 
             # Return wrapped job with MockJob interface
-            return MockJob(job_id, result[0], shots)
+            mock_result = MockResult(result[0])
+            return MockJob(mock_result)
 
         except Exception as e:
             raise RuntimeError(
