@@ -137,6 +137,20 @@ class MockJob:
         """
         return self.mock_result
 
+    def get_counts(self) -> Dict[str, int]:
+        """
+        Get measurement counts directly from MockJob (delegation).
+
+        This provides interface compatibility with code that calls
+        result.get_counts() directly instead of result.result().get_counts().
+
+        Returns
+        -------
+        Dict[str, int]
+            Dictionary of combined bitstrings to count values
+        """
+        return self.mock_result.get_counts()
+
 
 class IBMHardwareBackend(BackendInterface):
     """
@@ -390,6 +404,40 @@ class IBMHardwareBackend(BackendInterface):
     def time_idle_ns(self) -> float:
         """Return the calibrated idle period duration in nanoseconds."""
         return self._time_idle_ns
+
+    @time_idle_ns.setter
+    def time_idle_ns(self, value: float) -> None:
+        """
+        Prevent direct modification of time_idle_ns.
+        
+        CRITICAL: time_idle_ns is immutable after calibration to prevent accidental
+        modifications that would compromise the hardware experiment.
+        
+        For Scenario 2 (SQM with time_idle_ns=0), use BackendZeroIdleWrapper
+        in src.comparison.run_real_comparison() instead of direct assignment.
+        
+        Raises
+        ------
+        RuntimeError
+            Always, to enforce immutability and prevent hard-to-debug errors.
+        """
+        error_msg = (
+            "[IBMHardwareBackend] time_idle_ns is READ-ONLY after calibration.\n"
+            "\n"
+            f"WHAT HAPPENED: You attempted: backend_manager.time_idle_ns = {value}\n"
+            "\n"
+            "WHY THIS FAILS: time_idle_ns is calibrated from hardware at initialization.\n"
+            "Direct assignment would corrupt the experiment.\n"
+            "\n"
+            "TO FIX (For Scenario 2 - SQM with zero delay):\n"
+            "  Use BackendZeroIdleWrapper from src/comparison.py (line 480)\n"
+            "  instead of modifying backend_manager directly.\n"
+            "\n"
+            "CORRECT USAGE:\n"
+            "  from src.comparison import run_real_comparison\n"
+            "  results = run_real_comparison(..., scenario_filter=2)  # Auto-wraps for S2"
+        )
+        raise RuntimeError(error_msg)
 
     @property
     def use_native_delay(self) -> bool:

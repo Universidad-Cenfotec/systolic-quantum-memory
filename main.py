@@ -97,13 +97,13 @@ def main():
 
     # Run comparative analysis with all workloads
     workloads = [
-        #(f"Workload 1 {len(workload1)} instructions", workload1),
-        #(f"Workload 2 {len(workload2)} instructions", workload2),
-        #(f"Workload 3 {len(workload3)} instructions", workload3),
+        (f"Workload 1 {len(workload1)} instructions", workload1),
+        (f"Workload 2 {len(workload2)} instructions", workload2),
+        (f"Workload 3 {len(workload3)} instructions", workload3),
         (f"Workload 4 {len(workload4)} instructions", workload4),
-        #(f"Workload 5 {len(workload5)} instructions", workload5),
-        #(f"Workload 6 {len(workload6)} instructions", workload6),
-        #(f"Workload 7 {len(workload7)} instructions", workload7),
+        (f"Workload 5 {len(workload5)} instructions", workload5),
+        (f"Workload 6 {len(workload6)} instructions", workload6),
+        (f"Workload 7 {len(workload7)} instructions", workload7),
         #(f"Workload 8 {len(workload8)} instructions", workload8),
     ]
 

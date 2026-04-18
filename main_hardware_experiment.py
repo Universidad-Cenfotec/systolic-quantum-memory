@@ -15,6 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from src.comparison import run_real_comparison
 from src.backends.ibm_hardware_backend import IBMHardwareBackend
+from src.hardware_results_processor import save_hardware_comparison_results
 
 # ══════════════════════════════════════════════════════════════════════════════
 # CONFIGURATION: 3-Scenario Experiment (Hardware)
@@ -23,17 +24,17 @@ from src.backends.ibm_hardware_backend import IBMHardwareBackend
 # Compiler Configuration (Minimal for hardware - preserve quota)
 R = 1          # Number of memory registers (single register = minimal)
 n = 1          # Qubits per register (single qubit = fastest test)
-c_max = 3      # Gate cost threshold (aggressive refresh)
+c_max = 2      # Gate cost threshold (aggressive refresh)
 t_max_ns = 40000 # Time threshold (nanoseconds)
 
 # Hardware Execution Configuration
 shots = 100         # CRITICAL: Keep low to preserve IBM quota (10 min/month)
-test_workload = ["READ_0", "IDLE_2", "READ_0"]  # Representative workload
-
+#test_workload = ["READ_0", "IDLE_2", "READ_0"]  # Representative workload
+test_workload =["READ_0", "WRITE_0", "READ_0", "IDLE_2", "READ_0"]
 # Quantum State Configuration
 initial_state = 1   # 0 = |0⟩ target, 1 = |1⟩ target
 
-scenario = 1  # Set to 1, 2, or 3 to run specific scenario only (None = all scenarios)
+scenario = 3  # Set to 1, 2, or 3 to run specific scenario only (None = all scenarios)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Main Entry Point
@@ -85,12 +86,11 @@ def main():
         backend_info = backend_manager.get_backend_info()
         
         print(f"\n✓ Backend Connected Successfully!")
-        print(f"  Backend: {backend_info['name']}")
+        print(f"  Backend: {backend_info['backend_name']}")
         print(f"  Total Qubits: {backend_info['num_qubits']}")
         print(f"  Basis Gates: {backend_info['basis_gates']}")
-        print(f"  Calibration Time: {backend_info.get('calibration_date', 'N/A')}")
-        print(f"  Use Native Delay: {backend_manager.use_native_delay}")
-        print(f"  Idle Timing (ns): {backend_manager.time_idle_ns}")
+        print(f"  Use Native Delay: {backend_info['use_native_delay']}")
+        print(f"  Idle Timing (ns): {backend_info['idle_time_ns']}")
         
     except Exception as e:
         print(f"\n✗ Backend connection failed!")
@@ -130,6 +130,19 @@ def main():
     # ──────────────────────────────────────────────────────────
     # PHASE 3: EXECUTE EXPERIMENT
     # ──────────────────────────────────────────────────────────
+    # CRITICAL ARCHITECTURE NOTE:
+    # ──────────────────────────────────────────────────────────
+    # DO NOT directly modify backend_manager.time_idle_ns in this file!
+    # 
+    # The 3-scenario experiment handles Scenario 2 (time_idle_ns=0) internally
+    # via BackendZeroIdleWrapper in run_real_comparison() (comparison.py:480).
+    # 
+    # WHY: time_idle_ns is a READ-ONLY property on IBMHardwareBackend.
+    # Direct assignment will raise: RuntimeError (with detailed guidance).
+    # 
+    # SOLUTION: All scenarios are managed transparently by run_real_comparison().
+    # This script only reads backend_manager.time_idle_ns for display (line 94).
+    # ──────────────────────────────────────────────────────────
     
     phase_title = f"EXECUTE SCENARIO {scenario}" if scenario else "EXECUTE 3-SCENARIO EXPERIMENT"
     print(f"\n\nPHASE 3: {phase_title}")
@@ -165,6 +178,17 @@ def main():
             print(f"║ Thesis Validation: {analysis['thesis_validation']:<55} ║")
             print("║" + " " * 78 + "║")
             print("╚" + "═" * 78 + "╝")
+            
+            # Save results to CSV and generate graph
+            print("\n[PHASE 4: SAVING RESULTS]")
+            print("=" * 80)
+            try:
+                save_hardware_comparison_results(experiment_results)
+            except Exception as e:
+                print(f"\n✗ Failed to save results to CSV/graph")
+                print(f"  Error: {str(e)}")
+                import traceback
+                traceback.print_exc()
         
         print("\n✓ EXPERIMENT EXECUTION COMPLETE")
         print("  Next: Monitor job queue at https://quantum.ibm.com/compose")

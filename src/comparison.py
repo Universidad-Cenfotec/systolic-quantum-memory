@@ -483,7 +483,7 @@ def run_real_comparison(R: int, n: int, c_max: int, t_max_ns: float,
     print("╚" + "═" * 68 + "╝\n")
     
     print(f"[Hardware Connection]")
-    print(f"  Backend: {backend_manager.get_backend_info()['name']}")
+    print(f"  Backend: {backend_manager.get_backend_info()['backend_name']}")
     print(f"  Qubits available: {backend_manager.get_backend_info()['num_qubits']}")
     print(f"  Use native delay: {backend_manager.use_native_delay}")
     

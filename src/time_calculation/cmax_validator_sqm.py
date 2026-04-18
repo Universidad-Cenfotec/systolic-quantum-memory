@@ -539,7 +539,7 @@ class CMaxValidator:
 
 if __name__ == "__main__":
     # -- DEFINE THE ARCHITECTURE (N = Word width per register) -----------------
-    N_qubits = 2
+    N_qubits = 1
     validator = CMaxValidator(N=N_qubits)
     
 

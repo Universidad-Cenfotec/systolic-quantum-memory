@@ -247,13 +247,16 @@ class SwapCompiler:
                 if self.backend_manager.use_native_delay:
                     # Hardware backend: Use native delay instruction for precise timing
                     print(f"    [Hardware] Using qc.delay() for native timing ({time_ns:.0f} ns)")
-                    for qubit in qr_work:
-                        qc.delay(int(time_ns), qubit, unit='ns')
-                    # Also apply to memory registers for complete timing
-                    for i in range(self.R):
-                        qr_mem = self._built_registers[f"mem_{i}"]
-                        for qubit in qr_mem:
+                    if time_ns > 0:  # Avoid zero-delay to IBM Heron compiler (Scenario 2)
+                        for qubit in qr_work:
                             qc.delay(int(time_ns), qubit, unit='ns')
+                        # Also apply to memory registers for complete timing
+                        for i in range(self.R):
+                            qr_mem = self._built_registers[f"mem_{i}"]
+                            for qubit in qr_mem:
+                                qc.delay(int(time_ns), qubit, unit='ns')
+                    else:
+                        print(f"    [Hardware] Skipping zero-delay instruction (idle_ns=0)")
                 else:
                     # Simulation backend: Use id() gates with attached thermal noise model
                     print(f"    [Simulation] Using qc.id() gates with thermal noise model")

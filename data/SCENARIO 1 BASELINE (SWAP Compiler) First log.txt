@@ -1,0 +1,94 @@
+SCENARIO 1: BASELINE (SWAP Compiler)
+──────────────────────────────────────────────────────────────────────
+Description: Qubit experiences static decoherence (no refresh)
+Hypothesis: Lowest fidelity (baseline for comparison)
+[Swap Compiler] Initialized: R=1, n=1, c_max=3, t_max=40000 ns
+[Swap Compiler] Fidelity target state: |1>
+[Backend] IBMBackend with 156 qubits
+
+[Compilation] Allocating per-bit topology (q_work[i] connects to all mem_r[i])...
+[Compilation] Total qubits needed: 2
+[QubitMapper] SWAP Per-Bit Allocation (Qubit-Centric Center)
+  Target: R=1 memory registers, n=1 qubits per register
+[QubitMapper] Per-Bit Allocation Complete:
+  [mem_0               ] qubits [1]
+  [q_work              ] qubits [0]
+[Compilation] Physical qubit mapping:
+  q_work       -> [0]
+  mem_0        -> [1]
+
+[Compilation] Total qubits allocated: 2
+
+[Compilation] Preparing initial state |1...1> (applying X to all qubits: memory + operation register)...
+[Compilation] Initial state |1...1> prepared for all qubits
+    -> READ from Mem[0]
+    -> WRITE to Mem[0]
+    -> READ from Mem[0]
+    -> Wear-down sequence: 2 idle units (2700 ns total)
+    [Hardware] Using qc.delay() for native timing (2700 ns)
+    -> READ from Mem[0]
+[Compilation] Workload processing complete
+
+[Circuit Generated]
+  Qubits: 2
+  Depth: 14
+  Size: 16
+
+[Submitting to Hardware]
+
+[Execution] Preparing circuit for 100 shots
+[Execution] Seeds configured for reproducibility
+[Transpile] Translating to hardware topology with seed=42...
+              ┌───┐ ░      ┌───┐      ░ ┌───┐     ┌───┐ ░      ┌───┐      ░ »
+     R_mem_0: ┤ X ├─░───■──┤ X ├──■───░─┤ X ├──■──┤ X ├─░───■──┤ X ├──■───░─»
+              ├───┤ ░ ┌─┴─┐└─┬─┘┌─┴─┐ ░ └─┬─┘┌─┴─┐└─┬─┘ ░ ┌─┴─┐└─┬─┘┌─┴─┐ ░ »
+      Q_work: ┤ X ├─░─┤ X ├──■──┤ X ├─░───■──┤ X ├──■───░─┤ X ├──■──┤ X ├─░─»
+              └───┘ ░ └───┘     └───┘ ░      └───┘      ░ └───┘     └───┘ ░ »
+final_meas: 1/══════════════════════════════════════════════════════════════»
+                                                                            »
+«              ┌─────────────────┐ ░      ┌───┐      ░ ┌─┐
+«     R_mem_0: ┤ Delay(2700[ns]) ├─░───■──┤ X ├──■───░─┤M├
+«              ├─────────────────┤ ░ ┌─┴─┐└─┬─┘┌─┴─┐ ░ └╥┘
+«      Q_work: ┤ Delay(2700[ns]) ├─░─┤ X ├──■──┤ X ├─░──╫─
+«              └─────────────────┘ ░ └───┘     └───┘ ░  ║ 
+«final_meas: 1/═════════════════════════════════════════╩═
+«                                                       0 
+[Noise Model] Extracting noise characteristics...
+[Execution] Sending circuit to Backend Manager...
+[Execution] Submitting circuit to IBM Quantum backend (ibm_kingston)...
+[Execution] Circuit specs: 156 qubits, 1 clbits, depth=63
+[Execution] Job submitted with ID: d7hhs9q2khts739pq8dg
+[Execution] Waiting for results from queue...
+[Execution] Job d7hhs9q2khts739pq8dg completed successfully
+[IBMHardwareBackend] Extracted registers (in output order): ['final_meas']
+
+[Circuit] Generated transpiled circuit:
+  Qubits: 156
+  Clbits: 1
+  Depth: 63
+  Size: 89
+  Fidelity (|1...1> success for all 1 memory qubits): 0.9500
+  Top 3 outcomes: {'1': 95, '0': 5}
+
+[Scenario 1 Results]
+  ✓ Fidelity: 0.9500
+  ✓ Job ID: N/A
+  ✓ Total shots: 100
+
+[SKIPPED] Scenario 2 (Scenario filter active)
+
+[SKIPPED] Scenario 3 (Scenario filter active)
+
+╔════════════════════════════════════════════════════════════════════╗
+║                          SCENARIO 1 RESULTS                        ║
+╚════════════════════════════════════════════════════════════════════╝
+
+✓ Scenario 1 (SWAP Baseline)
+  Fidelity: 0.9500
+  Job ID: N/A
+
+✓ SINGLE SCENARIO EXECUTION COMPLETE
+
+✓ EXPERIMENT EXECUTION COMPLETE
+  Next: Monitor job queue at https://quantum.ibm.com/compose
+(.venv) PS C:\Users\danny\Documents\Quantum\systolic-quantum-memory> 
