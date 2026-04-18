@@ -171,8 +171,8 @@ class IBMHardwareBackend(BackendInterface):
 
     def __init__(
         self,
-        backend_name: str = "ibm_kyiv",
-        channel: str = "ibm_quantum",
+        backend_name: str = "ibm_kingston",
+        channel: str = "ibm_quantum_platform",
         instance: Optional[str] = None,
     ):
         """
@@ -181,7 +181,7 @@ class IBMHardwareBackend(BackendInterface):
         Parameters
         ----------
         backend_name : str, optional
-            Name of IBM Quantum backend (default: "ibm_kyiv")
+            Name of IBM Quantum backend (default: "ibm_kingston")
         channel : str, optional
             Channel for Qiskit Runtime (default: "ibm_quantum")
         instance : str, optional
@@ -198,7 +198,7 @@ class IBMHardwareBackend(BackendInterface):
             # Authenticate and get service
             # Note: channel can be 'ibm_quantum', 'ibm_cloud', or 'local'
             # The API accepts string values directly
-            self.service = QiskitRuntimeService(channel=channel)  # type: ignore
+            self.service = QiskitRuntimeService()  # type: ignore
             
             # Get backend instance
             self.backend = self.service.backend(backend_name)

@@ -33,6 +33,8 @@ test_workload = ["READ_0", "IDLE_2", "READ_0"]  # Representative workload
 # Quantum State Configuration
 initial_state = 1   # 0 = |0⟩ target, 1 = |1⟩ target
 
+scenario = 1  # Set to 1, 2, or 3 to run specific scenario only (None = all scenarios)
+
 # ══════════════════════════════════════════════════════════════════════════════
 # Main Entry Point
 # ══════════════════════════════════════════════════════════════════════════════
@@ -44,10 +46,22 @@ def main():
     Scenario 1 (Baseline): SWAP Compiler - Static decoherence
     Scenario 2 (SQM no-delay): SQM with time_idle_ns = 0 - Routing overhead only
     Scenario 3 (SQM Real): SQM with calibrated timing - Full thesis test
+    
+    Parameters
+    ----------
+    scenario : int, optional
+        Which scenario(s) to execute: 1, 2, 3, or None (all)
+        If None, executes all 3 scenarios
     """
     
+    # Display header with scenario info
+    if scenario:
+        header = f"SQM RESEARCH: SCENARIO {scenario} ONLY (IBM QUANTUM HARDWARE)"
+    else:
+        header = "SQM RESEARCH: 3-SCENARIO EXPERIMENT (IBM QUANTUM HARDWARE)"
+    
     print("╔" + "═" * 78 + "╗")
-    print("║" + "  SQM RESEARCH: 3-SCENARIO EXPERIMENT (IBM QUANTUM HARDWARE)".center(78) + "║")
+    print("║" + header.center(78) + "║")
     print("║" + "  Systolic Quantum Teleportation Memory".center(78) + "║")
     print("╚" + "═" * 78 + "╝\n")
     
@@ -64,8 +78,8 @@ def main():
         print("  → Scanning for available backends with dynamic circuit support")
         
         backend_manager = IBMHardwareBackend(
-            backend_name='ibm_kyiv',
-            channel='ibm_quantum'
+            backend_name='ibm_kingston',
+            channel='ibm_quantum_platform'
         )
         
         backend_info = backend_manager.get_backend_info()
@@ -108,11 +122,17 @@ def main():
     print(f"  Qubits available: {backend_info['num_qubits']}")
     print(f"  Shot budget: {shots} shots (cuota protection enabled)")
     
+    if scenario:
+        print(f"  Scenario mode: SINGLE (Scenario {scenario})")
+    else:
+        print(f"  Scenario mode: ALL (1, 2, and 3)")
+    
     # ──────────────────────────────────────────────────────────
-    # PHASE 3: EXECUTE 3-SCENARIO EXPERIMENT
+    # PHASE 3: EXECUTE EXPERIMENT
     # ──────────────────────────────────────────────────────────
     
-    print("\n\nPHASE 3: EXECUTE 3-SCENARIO EXPERIMENT")
+    phase_title = f"EXECUTE SCENARIO {scenario}" if scenario else "EXECUTE 3-SCENARIO EXPERIMENT"
+    print(f"\n\nPHASE 3: {phase_title}")
     print("=" * 80)
     
     try:
@@ -124,7 +144,8 @@ def main():
             shots=shots,
             workload=test_workload,
             backend_manager=backend_manager,
-            initial_state=initial_state
+            initial_state=initial_state,
+            scenario_filter=scenario  # Pass scenario filter (None = all)
         )
         
         # Print execution summary
