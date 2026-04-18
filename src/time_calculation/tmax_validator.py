@@ -394,8 +394,8 @@ if __name__ == "__main__":
     print("=" * 70)
     
     N = 1
-    T1_ns = 149_149  # 10th percentile
-    T2_ns = 38_194   # 10th percentile (critical limiting time)
+    T1_ns = 192.566  # 10th percentile
+    T2_ns = 35.887   # 10th percentile (critical limiting time)
     target_fidelity = 0.75
     
     validator = TmaxValidator(N=N, T1_ns=T1_ns, T2_ns=T2_ns)

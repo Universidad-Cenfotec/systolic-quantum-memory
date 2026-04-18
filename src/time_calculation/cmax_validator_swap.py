@@ -427,7 +427,7 @@ class CMaxValidator:
 
 if __name__ == "__main__":
     # 1. DEFINE THE ARCHITECTURE (N = Word width)
-    N_qubits = 2
+    N_qubits = 1
     validator = CMaxValidator(N=N_qubits)
 
     # -- Phase B.1: Complete RB characterization -------------------------------

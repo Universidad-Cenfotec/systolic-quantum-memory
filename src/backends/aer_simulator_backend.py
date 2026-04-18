@@ -40,8 +40,8 @@ class AerSimulatorBackend(BackendInterface):
     """
 
     # Thermal relaxation parameters (worst-case 10th percentile for FakeKyiv)
-    DEFAULT_T1_NS = 149_149  # 149.149 μs
-    DEFAULT_T2_NS = 38_194   # 38.194 μs
+    DEFAULT_T1_NS = 192.566  # 149.149 μs
+    DEFAULT_T2_NS = 35.887   # 38.194 μs
     DEFAULT_IDLE_TIME_NS = 7000  # 7 μs per identity gate unit
 
     def __init__(
