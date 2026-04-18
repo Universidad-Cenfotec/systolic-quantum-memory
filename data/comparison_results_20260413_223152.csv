@@ -1,8 +1,0 @@
-Run,Workload,SQM_Fidelity,SWAP_Fidelity,Difference,Percent_Diff,SQM_Qubits,SWAP_Qubits
-1,Workload 1 0 instructions,0.99975,0.99975,0.0,0.0,N/A,N/A
-2,Workload 2 1 instructions,0.838,0.838,0.0,0.0,N/A,N/A
-3,Workload 3 3 instructions,0.7085,0.7125,-0.0040000000000000036,-0.5614035087719303,N/A,N/A
-4,Workload 4 4 instructions,0.6445,0.64925,-0.004750000000000032,-0.7316134000770169,N/A,N/A
-5,Workload 5 5 instructions,0.612,0.61675,-0.004750000000000032,-0.7701661937576055,N/A,N/A
-6,Workload 6 6 instructions,0.55925,0.5855,-0.026249999999999996,-4.483347566182749,N/A,N/A
-7,Workload 7 7 instructions,0.54625,0.57075,-0.024499999999999966,-4.29259745948313,N/A,N/A
