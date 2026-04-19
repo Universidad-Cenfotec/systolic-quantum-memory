@@ -27,6 +27,7 @@ from src.backends.backend_interface import BackendInterface
 from src.simulator.sqm_simulator import SQMCompiler
 from src.simulator.swap_simulator import SwapCompiler
 from src.functions.qubit_mapper import QubitMapper
+from src.utils.hardware_results_processor import save_hardware_comparison_results
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -751,6 +752,15 @@ def run_real_comparison(R: int, n: int, c_max: int, t_max_ns: float,
         else:
             print(f"[Error] Scenario {scenario_filter} did not complete successfully")
     
+    # ──────────────────────────────────────────────────────────
+    # AUTO-SAVE: Generate CSV and graph if comparative analysis exists
+    # ──────────────────────────────────────────────────────────
+    if 'comparative_analysis' in results:
+        try:
+            save_hardware_comparison_results(results)
+        except Exception as e:
+            print(f"\n[WARNING] Failed to auto-save results: {e}")
+
     return results
 
 

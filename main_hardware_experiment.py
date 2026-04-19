@@ -15,7 +15,6 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from src.comparison import run_real_comparison
 from src.backends.ibm_hardware_backend import IBMHardwareBackend
-from src.hardware_results_processor import save_hardware_comparison_results
 
 # ══════════════════════════════════════════════════════════════════════════════
 # CONFIGURATION: 3-Scenario Experiment (Hardware)
@@ -256,17 +255,6 @@ def main():
             print(f"║ Thesis Validation: {analysis['thesis_validation']:<55} ║")
             print("║" + " " * 78 + "║")
             print("╚" + "═" * 78 + "╝")
-            
-            # Save results to CSV and generate graph
-            print("\n[PHASE 4: SAVING RESULTS]")
-            print("=" * 80)
-            try:
-                save_hardware_comparison_results(experiment_results)
-            except Exception as e:
-                print(f"\n✗ Failed to save results to CSV/graph")
-                print(f"  Error: {str(e)}")
-                import traceback
-                traceback.print_exc()
         
         print("\n✓ EXPERIMENT EXECUTION COMPLETE")
         print("  Next: Monitor job queue at https://quantum.ibm.com/compose")
