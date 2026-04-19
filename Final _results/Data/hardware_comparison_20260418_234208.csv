@@ -1,0 +1,3 @@
+Scenario,Configuration,Fidelity,Job_ID,R,N,C_Max,T_Max_ns,Shots,Initial_State,Notes
+1,SWAP Compiler (Baseline),0.9730,N/A,1,1,2,200000,1000,1,"Static decoherence, no refresh"
+3,SQM (Real Timing - Calibrated),0.9090,N/A,1,1,2,200000,1000,1,Backend-calibrated timing (1350 ns)

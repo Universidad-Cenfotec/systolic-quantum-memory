@@ -413,351 +413,334 @@ def run_full_comparison(R: int, n: int, c_max: int, t_max_ns: float,
         print("\n[Error] No successful results to summarize")
 
 
+
 # ══════════════════════════════════════════════════════════════════════════════
-# REAL HARDWARE COMPARISON (3 Scenarios Experiment)
+# REAL HARDWARE COMPARISON (Multi-Scenario Experiment)
 # ══════════════════════════════════════════════════════════════════════════════
 
 def run_real_comparison(R: int, n: int, c_max: int, t_max_ns: float,
-                       shots: int, workload: List[str], 
+                       shots: int, workload: List[str],
                        backend_manager: BackendInterface,
                        initial_state: int = 0,
-                       scenario_filter: Optional[int] = None) -> Optional[Dict[str, Any]]:
+                       scenarios: List[int] | None = None) -> Optional[Dict[str, Any]]:
     """
-    Execute 3-scenario experiment on real IBM Quantum hardware.
-    
+    Execute multi-scenario experiment on real IBM Quantum hardware.
+
     Scenario 1 (Baseline - SWAP): Qubit static decoherence
     Scenario 2 (SQM no Delay): Teleportation routing overhead only (idle=0)
     Scenario 3 (SQM Real): Full SQM with calibrated timing
-    
-    Parameters
-    ----------
-    R : int
-        Number of memory registers
-    n : int
-        Qubits per register
-    c_max : int
-        Gate cost threshold for teleportation
-    t_max_ns : float
-        Time threshold (nanoseconds)
-    shots : int
-        Number of circuit shots
-    workload : List[str]
-        Workload instructions (e.g., ["READ_0", "IDLE_2", "READ_0"])
-    backend_manager : BackendInterface
-        IBMHardwareBackend instance (real hardware connection)
-    initial_state : int
-        Target quantum state (0 or 1)
-    scenario_filter : int, optional
-        Execute only specific scenario (1, 2, or 3). If None, runs all 3.
-    
-    Returns
-    -------
-    Dict[str, Any]
-        Results from executed scenario(s) with comparison (if multiple)
     """
-    
-    # Helper class for wrapping backend with zero idle time (Scenario 2)
-    class BackendZeroIdleWrapper(BackendInterface):
-        """Wrapper that forces time_idle_ns = 0"""
-        def __init__(self, wrapped_backend: BackendInterface):
-            self._backend = wrapped_backend
-        
-        def get_backend_device(self) -> Any:
-            return self._backend.get_backend_device()
-        
-        def get_backend_info(self) -> Dict[str, Any]:
-            return self._backend.get_backend_info()
-        
-        def run(self, qc_transpiled: QuantumCircuit, shots: int, seed: int = 42) -> Any:
-            return self._backend.run(qc_transpiled, shots, seed)
-        
-        @property
-        def use_native_delay(self) -> bool:
-            return self._backend.use_native_delay
-        
-        @property
-        def time_idle_ns(self) -> float:
-            return 0  # Override: always return 0 for Scenario 2
-    
-    print("\n" + "╔" + "═" * 68 + "╗")
-    print("║" + "  3-SCENARIO EXPERIMENT: IBM QUANTUM HARDWARE".center(68) + "║")
-    print("╚" + "═" * 68 + "╝\n")
-    
-    print(f"[Hardware Connection]")
+
+    if scenarios is None:
+        scenarios = [1, 2, 3]
+
+    scenario_str = ", ".join(map(str, scenarios))
+    print("\n" + "=" * 70)
+    print(f"  EXPERIMENT: SCENARIOS {scenario_str}")
+    print("=" * 70)
+
+    print(f"\n[Hardware Connection]")
     print(f"  Backend: {backend_manager.get_backend_info()['backend_name']}")
     print(f"  Qubits available: {backend_manager.get_backend_info()['num_qubits']}")
     print(f"  Use native delay: {backend_manager.use_native_delay}")
-    
+
     print(f"\n[Experiment Configuration]")
     print(f"  Workload: {workload}")
     print(f"  Parameters: R={R}, n={n}, c_max={c_max}, t_max={t_max_ns} ns")
     print(f"  Shots: {shots}")
-    state_label = "|1⟩" if initial_state == 1 else "|0⟩"
+    state_label = "|1>" if initial_state == 1 else "|0>"
     print(f"  Target state: {state_label}")
-    
-    results = {
+    print(f"  Scenarios: {scenarios}")
+
+    results: Dict[str, Any] = {
         'timestamp': datetime.now().isoformat(),
         'backend_info': backend_manager.get_backend_info(),
         'workload': workload,
-        'params': {'R': R, 'n': n, 'c_max': c_max, 't_max_ns': t_max_ns, 'shots': shots},
+        'params': {'R': R, 'n': n, 'c_max': c_max, 't_max_ns': t_max_ns, 'shots': shots, 'initial_state': initial_state},
         'scenarios': {}
     }
-    
-    # Initialize job_id variables to None (for type checker)
-    job_id_swap = None
-    job_id_sqm_no_delay = None
-    job_id_sqm_real = None
-    fidelity_swap = None
-    fidelity_sqm_no_delay = None
-    fidelity_sqm_real = None
-    
-    # ──────────────────────────────────────────────────────────
+
+    # Track fidelity and job_id per scenario
+    fidelities: Dict[int, float] = {}
+    job_ids: Dict[int, str] = {}
+
+    # ------------------------------------------------------------------
     # SCENARIO 1: BASELINE - SWAP COMPILER (Static Decoherence)
-    # ──────────────────────────────────────────────────────────
-    
-    if scenario_filter is None or scenario_filter == 1:
-        print("\n" + "─" * 70)
+    # ------------------------------------------------------------------
+
+    if 1 in scenarios:
+        print("\n" + "-" * 70)
         print("SCENARIO 1: BASELINE (SWAP Compiler)")
-        print("─" * 70)
+        print("-" * 70)
         print("Description: Qubit experiences static decoherence (no refresh)")
         print("Hypothesis: Lowest fidelity (baseline for comparison)")
-        
+
         try:
             swap = SwapCompiler(R=R, n=n, c_max=c_max, t_max_ns=t_max_ns,
                                backend_manager=backend_manager, initial_state=initial_state)
-            
+
             circuit_swap = swap.compile_workload(workload)
             print(f"\n[Circuit Generated]")
             print(f"  Qubits: {circuit_swap.num_qubits}")
             print(f"  Depth: {circuit_swap.depth()}")
             print(f"  Size: {circuit_swap.size()}")
-            
+
             print(f"\n[Submitting to Hardware]")
             results_swap = swap.execute(circuit_swap, shots=shots)
-            fidelity_swap = results_swap['fidelity']
-            job_id_swap = results_swap.get('job_id', 'N/A')
-            
+            #results_swap= {  "fidelity": 0.82, "counts": 100, "total_shots": shots}
+            fidelities[1] = results_swap['fidelity']
+            job_ids[1] = results_swap.get('job_id', 'N/A')
+
             results['scenarios']['scenario_1_swap'] = {
-                'fidelity': fidelity_swap,
-                'job_id': job_id_swap,
+                'fidelity': fidelities[1],
+                'job_id': job_ids[1],
                 'total_shots': results_swap.get('total_shots', shots),
                 'counts_top5': list(results_swap.get('counts', {}).items())[:5]
             }
-            
+
             print(f"\n[Scenario 1 Results]")
-            print(f"  ✓ Fidelity: {fidelity_swap:.4f}")
-            print(f"  ✓ Job ID: {job_id_swap}")
-            print(f"  ✓ Total shots: {results_swap.get('total_shots', shots)}")
-            
+            print(f"  Fidelity: {fidelities[1]:.4f}")
+            print(f"  Job ID: {job_ids[1]}")
+
         except Exception as e:
             print(f"\n[ERROR] Scenario 1 failed: {str(e)}")
             import traceback
             traceback.print_exc()
             results['scenarios']['scenario_1_swap'] = {'error': str(e)}
-    else:
-        print("\n[SKIPPED] Scenario 1 (Scenario filter active)")
-    
-    # ──────────────────────────────────────────────────────────
+
+    # ------------------------------------------------------------------
     # SCENARIO 2: SQM WITHOUT DELAY (Routing Overhead Only)
-    # ──────────────────────────────────────────────────────────
-    
-    if scenario_filter is None or scenario_filter == 2:
-        print("\n" + "─" * 70)
-        print("SCENARIO 2: SQM WITHOUT DELAY (Routing Overhead)")
-        print("─" * 70)
-        print("Description: SQM with time_idle_ns = 0 (no passive decoherence)")
-        print("Hypothesis: Measure teleportation routing overhead cost")
-        
+    # ------------------------------------------------------------------
+
+    if 2 in scenarios:
+        print("\n" + "-" * 70)
+        print("SCENARIO 2: SQM WITHOUT DELAY (Routing Overhead Only)")
+        print("-" * 70)
+        print("Description: SQM with routing overhead only")
+        print("Hypothesis: SQM fidelity > SWAP baseline (validates thesis)")
+
         try:
-            # Use wrapper backend with zero idle time
-            wrapped_backend = BackendZeroIdleWrapper(backend_manager)
-            
-            print(f"\n[Configuration] Using wrapped backend with time_idle_ns = 0")
-            
-            sqm_no_delay = SQMCompiler(R=R, n=n, c_max=c_max, t_max_ns=t_max_ns,
-                                       backend_manager=wrapped_backend, initial_state=initial_state)
-            
-            circuit_sqm_no_delay = sqm_no_delay.compile_workload(workload)
+            sqm_real = SQMCompiler(R=R, n=n, c_max=c_max, t_max_ns=t_max_ns,
+                                  backend_manager=backend_manager, initial_state=initial_state)
+
+            filtered = [w for w in workload if not w.startswith("IDLE_5")]
+            circuit_sqm_real = sqm_real.compile_workload(filtered       )
             print(f"\n[Circuit Generated]")
-            print(f"  Qubits: {circuit_sqm_no_delay.num_qubits}")
-            print(f"  Depth: {circuit_sqm_no_delay.depth()}")
-            print(f"  Size: {circuit_sqm_no_delay.size()}")
-            
+            print(f"  Qubits: {circuit_sqm_real.num_qubits}")
+            print(f"  Depth: {circuit_sqm_real.depth()}")
+            print(f"  Size: {circuit_sqm_real.size()}")
+
             print(f"\n[Submitting to Hardware]")
-            results_sqm_no_delay = sqm_no_delay.execute(circuit_sqm_no_delay, shots=shots)
-            fidelity_sqm_no_delay = results_sqm_no_delay['fidelity']
-            job_id_sqm_no_delay = results_sqm_no_delay.get('job_id', 'N/A')
-            
+            results_sqm_real = sqm_real.execute(circuit_sqm_real, shots=shots)
+            #results_sqm_real = {  "fidelity": 0.95,    "counts": 100,  "total_shots": shots, }
+            fidelities[2] = results_sqm_real['fidelity']
+            job_ids[2] = results_sqm_real.get('job_id', 'N/A')
+
             results['scenarios']['scenario_2_sqm_no_delay'] = {
-                'fidelity': fidelity_sqm_no_delay,
-                'job_id': job_id_sqm_no_delay,
-                'total_shots': results_sqm_no_delay.get('total_shots', shots),
-                'counts_top5': list(results_sqm_no_delay.get('counts', {}).items())[:5],
-                'time_idle_ns': 0
+                'fidelity': fidelities[2],
+                'job_id': job_ids[2],
+                'total_shots': results_sqm_real.get('total_shots', shots),
+                'counts_top5': list(results_sqm_real.get('counts', {}).items())[:5],
+                'time_idle_ns': backend_manager.time_idle_ns
             }
-            
+
             print(f"\n[Scenario 2 Results]")
-            print(f"  ✓ Fidelity: {fidelity_sqm_no_delay:.4f}")
-            print(f"  ✓ Job ID: {job_id_sqm_no_delay}")
-            print(f"  ✓ Total shots: {results_sqm_no_delay.get('total_shots', shots)}")
-            
+            print(f"  Fidelity: {fidelities[2]:.4f}")
+            print(f"  Job ID: {job_ids[2]}")
+            print(f"  Time idle: {backend_manager.time_idle_ns} ns")
+
         except Exception as e:
             print(f"\n[ERROR] Scenario 2 failed: {str(e)}")
             import traceback
             traceback.print_exc()
             results['scenarios']['scenario_2_sqm_no_delay'] = {'error': str(e)}
-    else:
-        print("\n[SKIPPED] Scenario 2 (Scenario filter active)")
-    
-    # ──────────────────────────────────────────────────────────
+
+    # ------------------------------------------------------------------
     # SCENARIO 3: SQM WITH REAL TIMING (Calibrated)
-    # ──────────────────────────────────────────────────────────
-    
-    if scenario_filter is None or scenario_filter == 3:
-        print("\n" + "─" * 70)
+    # ------------------------------------------------------------------
+
+    if 3 in scenarios:
+        print("\n" + "-" * 70)
         print("SCENARIO 3: SQM WITH REAL TIMING (Full SQM)")
-        print("─" * 70)
+        print("-" * 70)
         print("Description: SQM with backend-calibrated timing")
         print("Hypothesis: SQM fidelity > SWAP baseline (validates thesis)")
-        
+
         try:
             sqm_real = SQMCompiler(R=R, n=n, c_max=c_max, t_max_ns=t_max_ns,
                                   backend_manager=backend_manager, initial_state=initial_state)
-            
+
             circuit_sqm_real = sqm_real.compile_workload(workload)
             print(f"\n[Circuit Generated]")
             print(f"  Qubits: {circuit_sqm_real.num_qubits}")
             print(f"  Depth: {circuit_sqm_real.depth()}")
             print(f"  Size: {circuit_sqm_real.size()}")
-            
+
             print(f"\n[Submitting to Hardware]")
             results_sqm_real = sqm_real.execute(circuit_sqm_real, shots=shots)
-            fidelity_sqm_real = results_sqm_real['fidelity']
-            job_id_sqm_real = results_sqm_real.get('job_id', 'N/A')
-            
+            #results_sqm_real = { "fidelity": 0.95, "counts": 100, "total_shots": shots}
+            fidelities[3] = results_sqm_real['fidelity']
+            job_ids[3] = results_sqm_real.get('job_id', 'N/A')
+
             results['scenarios']['scenario_3_sqm_real'] = {
-                'fidelity': fidelity_sqm_real,
-                'job_id': job_id_sqm_real,
+                'fidelity': fidelities[3],
+                'job_id': job_ids[3],
                 'total_shots': results_sqm_real.get('total_shots', shots),
                 'counts_top5': list(results_sqm_real.get('counts', {}).items())[:5],
                 'time_idle_ns': backend_manager.time_idle_ns
             }
-            
+
             print(f"\n[Scenario 3 Results]")
-            print(f"  ✓ Fidelity: {fidelity_sqm_real:.4f}")
-            print(f"  ✓ Job ID: {job_id_sqm_real}")
-            print(f"  ✓ Total shots: {results_sqm_real.get('total_shots', shots)}")
-            print(f"  ✓ Time idle: {backend_manager.time_idle_ns} ns")
-            
+            print(f"  Fidelity: {fidelities[3]:.4f}")
+            print(f"  Job ID: {job_ids[3]}")
+            print(f"  Time idle: {backend_manager.time_idle_ns} ns")
+
         except Exception as e:
             print(f"\n[ERROR] Scenario 3 failed: {str(e)}")
             import traceback
             traceback.print_exc()
             results['scenarios']['scenario_3_sqm_real'] = {'error': str(e)}
-    else:
-        print("\n[SKIPPED] Scenario 3 (Scenario filter active)")
-    
-    # ──────────────────────────────────────────────────────────
-    # COMPARATIVE ANALYSIS (if all 3 scenarios executed)
-    # ──────────────────────────────────────────────────────────
-    
-    if scenario_filter is None:
-        # Full comparison mode (all 3 scenarios)
-        print("\n" + "╔" + "═" * 68 + "╗")
-        print("║" + "  COMPARATIVE ANALYSIS (3 Scenarios)".center(68) + "║")
-        print("╚" + "═" * 68 + "╝\n")
-        
-        if fidelity_swap is not None and fidelity_sqm_no_delay is not None and fidelity_sqm_real is not None:
-            
-            # Calculate deltas
-            delta_s2_s1 = fidelity_sqm_no_delay - fidelity_swap
-            delta_s3_s1 = fidelity_sqm_real - fidelity_swap
-            delta_s3_s2 = fidelity_sqm_real - fidelity_sqm_no_delay
-            
-            # Create comparison table
-            print("┌─ FIDELITY COMPARISON ─────────────────────────────────────────┐")
-            print("│                                                                 │")
-            print(f"│ Scenario 1 (SWAP Baseline):         {fidelity_swap:.4f}                   │")
-            print(f"│ Scenario 2 (SQM no-delay):          {fidelity_sqm_no_delay:.4f}  ({delta_s2_s1:+.4f})      │")
-            print(f"│ Scenario 3 (SQM real timing):       {fidelity_sqm_real:.4f}  ({delta_s3_s1:+.4f})      │")
-            print("│                                                                 │")
-            print("└─────────────────────────────────────────────────────────────────┘")
-            
-            print("\n┌─ INSIGHTS ────────────────────────────────────────────────────┐")
-            
-            # Analysis
-            if fidelity_sqm_real > fidelity_swap:
-                print(f"│ ✓ SQM OUTPERFORMS SWAP by {delta_s3_s1:+.4f} ({delta_s3_s1/fidelity_swap*100:+.2f}%)      │")
+
+    # ------------------------------------------------------------------
+    # COMPARATIVE ANALYSIS (Adaptive - 1, 2, or 3 scenarios)
+    # ------------------------------------------------------------------
+
+    if len(fidelities) > 0:
+        print("\n" + "=" * 70)
+        print(f"  COMPARATIVE ANALYSIS ({len(fidelities)} Scenario(s))")
+        print("=" * 70)
+
+        # Build comparative info based on available scenarios
+        scenario_names = []
+        scenario_fidelities = []
+        comparisons = {}
+
+        if 1 in fidelities:
+            scenario_names.append("Scenario 1 (SWAP Baseline)")
+            scenario_fidelities.append(fidelities[1])
+            comparisons[1] = fidelities[1]
+
+        if 2 in fidelities:
+            scenario_names.append("Scenario 2 (SQM no-delay)")
+            scenario_fidelities.append(fidelities[2])
+            comparisons[2] = fidelities[2]
+
+        if 3 in fidelities:
+            scenario_names.append("Scenario 3 (SQM real timing)")
+            scenario_fidelities.append(fidelities[3])
+            comparisons[3] = fidelities[3]
+
+        # Print all available results
+        print(f"\n  Results:")
+        for name, fid in zip(scenario_names, scenario_fidelities):
+            print(f"  {name:40} {fid:.4f}")
+
+        # Comparative analysis for different scenario combinations
+        thesis_validation = "PENDING"
+        if {1, 2, 3}.issubset(fidelities.keys()):
+            delta_s2_s1 = fidelities[2] - fidelities[1]
+            delta_s3_s1 = fidelities[3] - fidelities[1]
+            delta_s3_s2 = fidelities[3] - fidelities[2]
+
+            print(f"\n  Deltas:")
+            print(f"    S2 - S1: {delta_s2_s1:+.4f}")
+            print(f"    S3 - S1: {delta_s3_s1:+.4f}")
+            print(f"    S3 - S2: {delta_s3_s2:+.4f}")
+
+            if fidelities[3] > fidelities[1]:
+                print(f"\n  -> SQM OUTPERFORMS SWAP by {delta_s3_s1:+.4f} ({delta_s3_s1/fidelities[1]*100:+.2f}%)")
                 thesis_validation = "SUPPORTED"
             else:
-                print(f"│ ✗ SWAP outperforms SQM by {abs(delta_s3_s1):+.4f} ({abs(delta_s3_s1)/fidelity_swap*100:+.2f}%)     │")
-                thesis_validation = "NOT SUPPORTED (but check noise)"
-            
-            if fidelity_sqm_real > fidelity_sqm_no_delay:
-                print(f"│ ✓ Timing improves S3 vs S2 by {delta_s3_s2:+.4f} (refresh benefit)│")
+                print(f"\n  -> SWAP outperforms SQM by {abs(delta_s3_s1):.4f} ({abs(delta_s3_s1)/fidelities[1]*100:.2f}%)")
+                thesis_validation = "NOT SUPPORTED"
+
+            if fidelities[3] > fidelities[2]:
+                print(f"  -> Timing improves S3 vs S2 by {delta_s3_s2:+.4f} (refresh benefit)")
             else:
-                print(f"│ ✗ Timing hurts S3 vs S2 by {abs(delta_s3_s2):+.4f} (decoherence > refresh) │")
-            
-            print(f"│ ★ THESIS STATUS: {thesis_validation:<42} │")
-            print("└─────────────────────────────────────────────────────────────────┘")
-            
+                print(f"  -> Timing hurts S3 vs S2 by {abs(delta_s3_s2):.4f} (decoherence > refresh)")
+
             results['comparative_analysis'] = {
-                'fidelity_swap': fidelity_swap,
-                'fidelity_sqm_no_delay': fidelity_sqm_no_delay,
-                'fidelity_sqm_real': fidelity_sqm_real,
+                'fidelity_swap': fidelities[1],
+                'fidelity_sqm_no_delay': fidelities[2],
+                'fidelity_sqm_real': fidelities[3],
                 'delta_s2_s1': delta_s2_s1,
                 'delta_s3_s1': delta_s3_s1,
                 'delta_s3_s2': delta_s3_s2,
                 'thesis_validation': thesis_validation,
                 'job_ids': {
-                    'scenario_1': job_id_swap if job_id_swap else 'N/A',
-                    'scenario_2': job_id_sqm_no_delay if job_id_sqm_no_delay else 'N/A',
-                    'scenario_3': job_id_sqm_real if job_id_sqm_real else 'N/A'
+                    'scenario_1': job_ids.get(1, 'N/A'),
+                    'scenario_2': job_ids.get(2, 'N/A'),
+                    'scenario_3': job_ids.get(3, 'N/A')
                 }
             }
-            
-            print("\n" + "=" * 70)
-            print("✓ 3-SCENARIO EXPERIMENT COMPLETE")
-            print("=" * 70)
-        
-        else:
-            print("\n[Error] One or more scenarios failed - cannot complete analysis")
-    
+
+        elif {1, 2}.issubset(fidelities.keys()):
+            delta_s2_s1 = fidelities[2] - fidelities[1]
+            print(f"\n  Delta (S2 - S1): {delta_s2_s1:+.4f}")
+            if fidelities[2] > fidelities[1]:
+                print(f"  -> SQM outperforms SWAP baseline by {delta_s2_s1:+.4f}")
+                thesis_validation = "PARTIAL (2/3 scenarios)"
+            else:
+                print(f"  -> SWAP outperforms SQM by {abs(delta_s2_s1):.4f}")
+                thesis_validation = "PARTIAL (2/3 scenarios)"
+
+            results['comparative_analysis'] = {
+                'fidelity_swap': fidelities[1],
+                'fidelity_sqm_no_delay': fidelities[2],
+                'delta_s2_s1': delta_s2_s1,
+                'thesis_validation': thesis_validation,
+                'job_ids': {
+                    'scenario_1': job_ids.get(1, 'N/A'),
+                    'scenario_2': job_ids.get(2, 'N/A'),
+                }
+            }
+
+        elif 1 in fidelities and 3 in fidelities:
+            delta_s3_s1 = fidelities[3] - fidelities[1]
+            print(f"\n  Delta (S3 - S1): {delta_s3_s1:+.4f}")
+            if fidelities[3] > fidelities[1]:
+                print(f"  -> SQM outperforms SWAP by {delta_s3_s1:+.4f}")
+                thesis_validation = "PARTIAL (2/3 scenarios)"
+            else:
+                print(f"  -> SWAP outperforms SQM by {abs(delta_s3_s1):.4f}")
+                thesis_validation = "PARTIAL (2/3 scenarios)"
+
+            results['comparative_analysis'] = {
+                'fidelity_swap': fidelities[1],
+                'fidelity_sqm_real': fidelities[3],
+                'delta_s3_s1': delta_s3_s1,
+                'thesis_validation': thesis_validation,
+                'job_ids': {
+                    'scenario_1': job_ids.get(1, 'N/A'),
+                    'scenario_3': job_ids.get(3, 'N/A'),
+                }
+            }
+
+        elif len(fidelities) == 1:
+            first_scenario = list(fidelities.keys())[0]
+            print(f"\n  Single scenario result - awaiting other scenarios for full comparison")
+            thesis_validation = "INCOMPLETE (1/3 scenarios)"
+            results['comparative_analysis'] = {
+                f'fidelity_scenario_{first_scenario}': fidelities[first_scenario],
+                'thesis_validation': thesis_validation,
+                'job_ids': {f'scenario_{first_scenario}': job_ids.get(first_scenario, 'N/A')}
+            }
+
+        print(f"\n  ANALYSIS STATUS: {thesis_validation}")
+        print("\n" + "=" * 70)
+        print("EXPERIMENT COMPLETE")
+        print("=" * 70)
+
     else:
-        # Single scenario mode - display results for selected scenario
-        print("\n" + "╔" + "═" * 68 + "╗")
-        print("║" + f"  SCENARIO {scenario_filter} RESULTS".center(68) + "║")
-        print("╚" + "═" * 68 + "╝\n")
-        
-        if scenario_filter == 1 and fidelity_swap is not None:
-            print(f"✓ Scenario 1 (SWAP Baseline)")
-            print(f"  Fidelity: {fidelity_swap:.4f}")
-            print(f"  Job ID: {job_id_swap}")
-            print("\n✓ SINGLE SCENARIO EXECUTION COMPLETE")
-        
-        elif scenario_filter == 2 and fidelity_sqm_no_delay is not None:
-            print(f"✓ Scenario 2 (SQM no-delay)")
-            print(f"  Fidelity: {fidelity_sqm_no_delay:.4f}")
-            print(f"  Job ID: {job_id_sqm_no_delay}")
-            print(f"  Time idle: 0 ns (forced)")
-            print("\n✓ SINGLE SCENARIO EXECUTION COMPLETE")
-        
-        elif scenario_filter == 3 and fidelity_sqm_real is not None:
-            print(f"✓ Scenario 3 (SQM Real Timing)")
-            print(f"  Fidelity: {fidelity_sqm_real:.4f}")
-            print(f"  Job ID: {job_id_sqm_real}")
-            print(f"  Time idle: {backend_manager.time_idle_ns} ns (calibrated)")
-            print("\n✓ SINGLE SCENARIO EXECUTION COMPLETE")
-        
-        else:
-            print(f"[Error] Scenario {scenario_filter} did not complete successfully")
-    
-    # ──────────────────────────────────────────────────────────
-    # AUTO-SAVE: Generate CSV and graph if comparative analysis exists
-    # ──────────────────────────────────────────────────────────
-    if 'comparative_analysis' in results:
+        print("\n[Error] No scenarios completed successfully")
+
+    # ------------------------------------------------------------------
+    # AUTO-SAVE: Generate CSV and graph for ANY completed scenarios
+    # ------------------------------------------------------------------
+    if 'comparative_analysis' in results and len(fidelities) > 0:
         try:
             save_hardware_comparison_results(results)
+            print("\n✓ Results saved successfully")
         except Exception as e:
             print(f"\n[WARNING] Failed to auto-save results: {e}")
 

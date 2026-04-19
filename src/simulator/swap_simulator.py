@@ -366,7 +366,7 @@ class SwapCompiler:
             initial_layout = self._get_initial_layout(qc_measured)
 
             # DEBUG: Uncomment below to visualize circuit before transpilation
-            print(qc_measured.draw(output="text"))
+            #print(qc_measured.draw(output="text"))
             print("[Noise Model] Extracting noise characteristics...")
             
             # Transpile with seed for reproducibility

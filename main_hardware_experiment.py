@@ -17,28 +17,37 @@ from src.comparison import run_real_comparison
 from src.backends.ibm_hardware_backend import IBMHardwareBackend
 
 # ══════════════════════════════════════════════════════════════════════════════
-# CONFIGURATION: 3-Scenario Experiment (Hardware)
+# CONFIGURATION: Multi-Workload Hardware Experiment
 # ══════════════════════════════════════════════════════════════════════════════
 
 # Compiler Configuration (Minimal for hardware - preserve quota)
 R = 1          # Number of memory registers (single register = minimal)
 n = 1          # Qubits per register (single qubit = fastest test)
-c_max = 2     # Gate cost threshold (aggressive refresh)
-t_max_ns = 80000 # Time threshold (nanoseconds)
+c_max = 2      # Gate cost threshold (aggressive refresh)
+t_max_ns = 20000000 # Time threshold (nanoseconds)
 
 # Hardware Execution Configuration
-shots = 100         # CRITICAL: Keep low to preserve IBM quota (10 min/month)
-#test_workload = ["READ_0", "IDLE_2", "READ_0"]  # Representative workload
-test_workload = ["READ_0","IDLE_30", "WRITE_0", "IDLE_20", "READ_0"]
+shots = 1000         # CRITICAL: Keep low to preserve IBM quota (10 min/month)
+
 # Quantum State Configuration
 initial_state = 1   # 0 = |0⟩ target, 1 = |1⟩ target
+
+# Test Workloads (Multiple workloads for comparison)
+workload1 = ["READ_0","IDLE_100","WRITE_0","IDLE_100","READ_0"]
+workload2 = ["READ_0","IDLE_150","WRITE_0","IDLE_150","READ_0"]
+workload3 = ["READ_0","IDLE_200","WRITE_0","IDLE_200","READ_0"]
+
+workload4 = ["READ_0","IDLE_80","WRITE_0","IDLE_160","READ_0"]
+workload5 = ["READ_0","IDLE_100","WRITE_0","IDLE_200","READ_0"]
+workload6 = ["READ_0","IDLE_150","WRITE_0","IDLE_300","READ_0"]
+
 
 # Set to int (1, 2, 3), list ([1,3], etc.), or None (all scenarios)
 # Examples:
 #   scenario = [1 ]         -> Run only Scenario 1
 #   scenario = [1, 3]     -> Run Scenarios 1 and 3 (generates comparison graph)
 #   scenario = [1, 2, 3]  -> Run all 3 scenarios (generates comparison graph)
-scenario = [1, 2, 3]  # Run all 3 scenarios for comprehensive comparison
+scenario = [1, 3]  # Run scenarios 1 and 3 for comparison
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Main Entry Point
@@ -46,27 +55,18 @@ scenario = [1, 2, 3]  # Run all 3 scenarios for comprehensive comparison
 
 def main():
     """
-    Main entry point - Execute 3-Scenario Experiment on real IBM Quantum hardware.
+    Main entry point - Execute multi-workload experiment on real IBM Quantum hardware.
     
-    Scenario 1 (Baseline): SWAP Compiler - Static decoherence
-    Scenario 2 (SQM no-delay): SQM with time_idle_ns = 0 - Routing overhead only
-    Scenario 3 (SQM Real): SQM with calibrated timing - Full thesis test
-    
-    Parameters
-    ----------
-    scenario : int, optional
-        Which scenario(s) to execute: 1, 2, 3, or None (all)
-        If None, executes all 3 scenarios
+    Executes multiple workloads with specified scenarios (1, 2, or 3).
+    Generates combined CSV and comparison graph across all workloads.
     """
     
-    # Display header with scenario info
+    # Display header
     if isinstance(scenario, list):
         scenario_str = ", ".join(map(str, scenario))
-        header = f"SQM RESEARCH: SCENARIOS {scenario_str} (IBM QUANTUM HARDWARE)"
-    elif isinstance(scenario, int):
-        header = f"SQM RESEARCH: SCENARIO {scenario} ONLY (IBM QUANTUM HARDWARE)"
+        header = f"SQM RESEARCH: MULTI-WORKLOAD EXPERIMENT (Scenarios {scenario_str})"
     else:
-        header = "SQM RESEARCH: 3-SCENARIO EXPERIMENT (IBM QUANTUM HARDWARE)"
+        header = "SQM RESEARCH: MULTI-WORKLOAD EXPERIMENT (IBM QUANTUM HARDWARE)"
     
     print("╔" + "═" * 78 + "╗")
     print("║" + header.center(78) + "║")
@@ -113,154 +113,111 @@ def main():
         return
     
     # ──────────────────────────────────────────────────────────
-    # PHASE 2: CIRCUIT VALIDATION
+    # PHASE 2: MULTI-WORKLOAD CONFIGURATION
     # ──────────────────────────────────────────────────────────
     
-    print("\n\nPHASE 2: CIRCUIT PRE-VALIDATION")
+    print("\n\nPHASE 2: MULTI-WORKLOAD CONFIGURATION")
     print("=" * 80)
     
-    print(f"\n[Workload] {test_workload}")
-    print(f"[Parameters] R={R}, n={n}, c_max={c_max}, t_max={t_max_ns} ns, shots={shots}")
+    # Define workloads with descriptive names
+    workloads = [
+        (f"Workload 1 ({len(workload1)} instr)", workload1),
+        (f"Workload 2 ({len(workload2)} instr)", workload2),
+        (f"Workload 3 ({len(workload3)} instr)", workload3),
+        (f"Workload 4 ({len(workload4)} instr)", workload4),
+        (f"Workload 5 ({len(workload5)} instr)", workload5),
+        (f"Workload 6 ({len(workload6)} instr)", workload6)
+
+    ]
+    
+    print(f"\n[Workloads to Execute]")
+    for idx, (name, wl) in enumerate(workloads, 1):
+        print(f"  {idx}. {name}: {wl}")
+    
+    print(f"\n[Compiler Parameters]")
+    print(f"  R={R}, n={n}, c_max={c_max}, t_max={t_max_ns} ns, shots={shots}")
     state_label = "|1⟩" if initial_state == 1 else "|0⟩"
-    print(f"[Target State] {state_label}")
+    print(f"  Target state: {state_label}")
     
     print(f"\n✓ Configuration validated")
-    print(f"  Qubits required: ~{n * (R + 2)} qubits (work + memory + teleport ancilla)")
+    print(f"  Qubits required: ~{n * (R + 2)} qubits")
     print(f"  Qubits available: {backend_info['num_qubits']}")
-    print(f"  Shot budget: {shots} shots (cuota protection enabled)")
+    print(f"  Total workloads: {len(workloads)}")
     
     if isinstance(scenario, list):
         scenario_str = ", ".join(map(str, scenario))
         print(f"  Scenario mode: MULTIPLE (Scenarios {scenario_str})")
-    elif isinstance(scenario, int):
-        print(f"  Scenario mode: SINGLE (Scenario {scenario})")
     else:
         print(f"  Scenario mode: ALL (1, 2, and 3)")
     
     # ──────────────────────────────────────────────────────────
-    # PHASE 3: EXECUTE EXPERIMENT
-    # ──────────────────────────────────────────────────────────
-    # CRITICAL ARCHITECTURE NOTE:
-    # ──────────────────────────────────────────────────────────
-    # DO NOT directly modify backend_manager.time_idle_ns in this file!
-    # 
-    # The 3-scenario experiment handles Scenario 2 (time_idle_ns=0) internally
-    # via BackendZeroIdleWrapper in run_real_comparison() (comparison.py:480).
-    # 
-    # WHY: time_idle_ns is a READ-ONLY property on IBMHardwareBackend.
-    # Direct assignment will raise: RuntimeError (with detailed guidance).
-    # 
-    # SOLUTION: All scenarios are managed transparently by run_real_comparison().
-    # This script only reads backend_manager.time_idle_ns for display (line 94).
+    # PHASE 3: EXECUTE ALL WORKLOADS
     # ──────────────────────────────────────────────────────────
     
-    # Determine what to execute
-    if isinstance(scenario, list):
-        scenario_str = ", ".join(map(str, scenario))
-        phase_title = f"EXECUTE SCENARIOS {scenario_str} (WITH COMPARISON)"
-    elif isinstance(scenario, int):
-        phase_title = f"EXECUTE SCENARIO {scenario}"
-    else:
-        phase_title = "EXECUTE 3-SCENARIO EXPERIMENT"
-    
-    print(f"\n\nPHASE 3: {phase_title}")
+    print(f"\n\nPHASE 3: EXECUTE MULTI-WORKLOAD EXPERIMENT")
     print("=" * 80)
     
+    # Accumulate all workload results
+    all_workload_results = []
+    
     try:
-        # For lists, execute each scenario individually and combine results
-        if isinstance(scenario, list):
-            all_scenarios_data = {}
+        for workload_idx, (workload_name, workload_data) in enumerate(workloads, 1):
+            print(f"\n\n{'─' * 80}")
+            print(f"WORKLOAD {workload_idx}/{len(workloads)}: {workload_name}")
+            print(f"{'─' * 80}")
             
-            for scen in scenario:
-                print(f"\n[Executing Scenario {scen}]")
-                scen_results = run_real_comparison(
-                    R=R,
-                    n=n,
-                    c_max=c_max,
-                    t_max_ns=t_max_ns,
-                    shots=shots,
-                    workload=test_workload,
-                    backend_manager=backend_manager,
-                    initial_state=initial_state,
-                    scenario_filter=scen
-                )
-                all_scenarios_data[scen] = scen_results
-            
-            # Combine results for comparison
-            experiment_results = all_scenarios_data[scenario[0]].copy()
-            
-            # Build comparative analysis if multiple scenarios
-            if len(scenario) >= 2:
-                fidelities = {}
-                job_ids = {}
-                
-                for scen in scenario:
-                    scen_data = all_scenarios_data[scen]
-                    # Extract fidelity from the scenario's results
-                    scenarios_dict = scen_data.get('scenarios', {})
-                    
-                    if f'scenario_{scen}_swap' in scenarios_dict:
-                        fidelities[scen] = scenarios_dict[f'scenario_{scen}_swap'].get('fidelity', 0)
-                        job_ids[scen] = scenarios_dict[f'scenario_{scen}_swap'].get('job_id', 'N/A')
-                    elif f'scenario_{scen}_sqm_no_delay' in scenarios_dict:
-                        fidelities[scen] = scenarios_dict[f'scenario_{scen}_sqm_no_delay'].get('fidelity', 0)
-                        job_ids[scen] = scenarios_dict[f'scenario_{scen}_sqm_no_delay'].get('job_id', 'N/A')
-                    elif f'scenario_{scen}_sqm_real' in scenarios_dict:
-                        fidelities[scen] = scenarios_dict[f'scenario_{scen}_sqm_real'].get('fidelity', 0)
-                        job_ids[scen] = scenarios_dict[f'scenario_{scen}_sqm_real'].get('job_id', 'N/A')
-                
-                # Create comparative analysis
-                experiment_results['comparative_analysis'] = {
-                    'fidelity_swap': fidelities.get(1, 0),
-                    'fidelity_sqm_no_delay': fidelities.get(2, 0),
-                    'fidelity_sqm_real': fidelities.get(3, 0),
-                    'delta_s2_s1': fidelities.get(2, 0) - fidelities.get(1, 0),
-                    'delta_s3_s1': fidelities.get(3, 0) - fidelities.get(1, 0),
-                    'delta_s3_s2': fidelities.get(3, 0) - fidelities.get(2, 0),
-                    'thesis_validation': 'SUPPORTED' if fidelities.get(3, 0) > fidelities.get(1, 0) else 'NOT SUPPORTED',
-                    'job_ids': {
-                        'scenario_1': job_ids.get(1, 'N/A'),
-                        'scenario_2': job_ids.get(2, 'N/A'),
-                        'scenario_3': job_ids.get(3, 'N/A')
-                    }
-                }
-        else:
-            # Single scenario or None (all scenarios)
-            experiment_results = run_real_comparison(
+            # Execute current workload with specified scenarios
+            workload_results = run_real_comparison(
                 R=R,
                 n=n,
                 c_max=c_max,
                 t_max_ns=t_max_ns,
                 shots=shots,
-                workload=test_workload,
+                workload=workload_data,
                 backend_manager=backend_manager,
                 initial_state=initial_state,
-                scenario_filter=scenario  # Pass scenario filter (None = all)
+                scenarios=scenario  # Pass scenario filter
             )
-        
-        # Print execution summary
-        if experiment_results and 'comparative_analysis' in experiment_results:
-            analysis = experiment_results['comparative_analysis']
-            print("\n\n" + "╔" + "═" * 78 + "╗")
-            print("║" + "  EXECUTION SUMMARY".center(78) + "║")
-            print("╠" + "═" * 78 + "╣")
             
-            print("║" + " " * 78 + "║")
-            print("║ Job IDs (for result queries):".ljust(79) + "║")
-            print(f"║   Scenario 1 (SWAP): {analysis['job_ids']['scenario_1']:<57} ║")
-            print(f"║   Scenario 2 (SQM no-delay): {analysis['job_ids']['scenario_2']:<47} ║")
-            print(f"║   Scenario 3 (SQM real): {analysis['job_ids']['scenario_3']:<52} ║")
-            
-            print("║" + " " * 78 + "║")
-            print(f"║ Thesis Validation: {analysis['thesis_validation']:<55} ║")
-            print("║" + " " * 78 + "║")
-            print("╚" + "═" * 78 + "╝")
+            # Add workload name to results for tracking
+            if workload_results:
+                workload_results['workload_name'] = workload_name
+                workload_results['workload_data'] = workload_data
+                all_workload_results.append(workload_results)
+                print(f"\n✓ Workload {workload_idx} completed and saved")
+            else:
+                print(f"\n✗ Workload {workload_idx} failed")
         
-        print("\n✓ EXPERIMENT EXECUTION COMPLETE")
-        print("  Next: Monitor job queue at https://quantum.ibm.com/compose")
+        # ──────────────────────────────────────────────────────────
+        # PHASE 4: GENERATE COMBINED RESULTS
+        # ──────────────────────────────────────────────────────────
+        
+        print(f"\n\nPHASE 4: GENERATE COMBINED RESULTS")
+        print("=" * 80)
+        
+        if all_workload_results:
+            # Call processor with all workloads
+            from src.utils.hardware_results_processor import save_hardware_multi_workload_results
+            save_hardware_multi_workload_results(
+                all_workload_results=all_workload_results,
+                backend_info=backend_info,
+                params={
+                    'R': R,
+                    'n': n,
+                    'c_max': c_max,
+                    't_max_ns': t_max_ns,
+                    'shots': shots,
+                    'initial_state': initial_state
+                }
+            )
+            
+            print("\n✓ MULTI-WORKLOAD EXPERIMENT COMPLETE")
+            print("  All results saved to data/ and results/")
+        else:
+            print("\n✗ No workload results available for saving")
         
     except Exception as e:
-        print(f"\n✗ Experiment execution failed!")
+        print(f"\n✗ Multi-workload experiment failed!")
         print(f"  Error: {str(e)}")
         import traceback
         traceback.print_exc()

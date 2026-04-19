@@ -1,0 +1,13 @@
+Scenario,Configuration,Fidelity,Job_ID,R,N,C_Max,T_Max_ns,Shots,Initial_State,Notes,Workload
+1,SWAP Compiler (Baseline),0.4670,N/A,1,1,2,20000000,1000,1,"Static decoherence, no refresh","READ_0,IDLE_100,WRITE_0,IDLE_100,READ_0"
+3,SQM (Real Timing - Calibrated),0.4560,N/A,1,1,2,20000000,1000,1,Backend-calibrated timing,"READ_0,IDLE_100,WRITE_0,IDLE_100,READ_0"
+1,SWAP Compiler (Baseline),0.2510,N/A,1,1,2,20000000,1000,1,"Static decoherence, no refresh","READ_0,IDLE_150,WRITE_0,IDLE_150,READ_0"
+3,SQM (Real Timing - Calibrated),0.2240,N/A,1,1,2,20000000,1000,1,Backend-calibrated timing,"READ_0,IDLE_150,WRITE_0,IDLE_150,READ_0"
+1,SWAP Compiler (Baseline),0.1800,N/A,1,1,2,20000000,1000,1,"Static decoherence, no refresh","READ_0,IDLE_200,WRITE_0,IDLE_200,READ_0"
+3,SQM (Real Timing - Calibrated),0.1660,N/A,1,1,2,20000000,1000,1,Backend-calibrated timing,"READ_0,IDLE_200,WRITE_0,IDLE_200,READ_0"
+1,SWAP Compiler (Baseline),0.3330,N/A,1,1,2,20000000,1000,1,"Static decoherence, no refresh","READ_0,IDLE_80,WRITE_0,IDLE_160,READ_0"
+3,SQM (Real Timing - Calibrated),0.3750,N/A,1,1,2,20000000,1000,1,Backend-calibrated timing,"READ_0,IDLE_80,WRITE_0,IDLE_160,READ_0"
+1,SWAP Compiler (Baseline),0.2690,N/A,1,1,2,20000000,1000,1,"Static decoherence, no refresh","READ_0,IDLE_100,WRITE_0,IDLE_200,READ_0"
+3,SQM (Real Timing - Calibrated),0.2540,N/A,1,1,2,20000000,1000,1,Backend-calibrated timing,"READ_0,IDLE_100,WRITE_0,IDLE_200,READ_0"
+1,SWAP Compiler (Baseline),0.1550,N/A,1,1,2,20000000,1000,1,"Static decoherence, no refresh","READ_0,IDLE_150,WRITE_0,IDLE_300,READ_0"
+3,SQM (Real Timing - Calibrated),0.1960,N/A,1,1,2,20000000,1000,1,Backend-calibrated timing,"READ_0,IDLE_150,WRITE_0,IDLE_300,READ_0"

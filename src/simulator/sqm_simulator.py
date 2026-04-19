@@ -482,7 +482,7 @@ class SQMCompiler:
             
             print("[Noise Model] Extracting noise characteristics...")
             # Note: qc_measured.draw(output="text") produces Unicode chars, skip for Windows compat
-            print(qc_measured.draw(output="text"))
+            #print(qc_measured.draw(output="text"))
            
             # Transpile with seed for reproducibility
             qc_transpiled = transpile(
