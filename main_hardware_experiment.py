@@ -23,8 +23,8 @@ from src.backends.ibm_hardware_backend import IBMHardwareBackend
 # Compiler Configuration (Minimal for hardware - preserve quota)
 R = 1          # Number of memory registers (single register = minimal)
 n = 1          # Qubits per register (single qubit = fastest test)
-c_max = 2      # Gate cost threshold (aggressive refresh)
-t_max_ns = 20000000 # Time threshold (nanoseconds)
+c_max = 3      # Gate cost threshold (aggressive refresh)
+t_max_ns = 1350*50 # Time threshold (nanoseconds)
 
 # Hardware Execution Configuration
 shots = 1000         # CRITICAL: Keep low to preserve IBM quota (10 min/month)
@@ -33,13 +33,14 @@ shots = 1000         # CRITICAL: Keep low to preserve IBM quota (10 min/month)
 initial_state = 1   # 0 = |0⟩ target, 1 = |1⟩ target
 
 # Test Workloads (Multiple workloads for comparison)
-workload1 = ["READ_0","IDLE_100","WRITE_0","IDLE_100","READ_0"]
-workload2 = ["READ_0","IDLE_150","WRITE_0","IDLE_150","READ_0"]
-workload3 = ["READ_0","IDLE_200","WRITE_0","IDLE_200","READ_0"]
+workload1 = ["IDLE_40"]
+workload2 = ["IDLE_80"]
+workload3 = ["IDLE_160"]
+workload4 = ["IDLE_320"]
+workload5 = ["IDLE_500"]
 
-workload4 = ["READ_0","IDLE_80","WRITE_0","IDLE_160","READ_0"]
-workload5 = ["READ_0","IDLE_100","WRITE_0","IDLE_200","READ_0"]
-workload6 = ["READ_0","IDLE_150","WRITE_0","IDLE_300","READ_0"]
+
+
 
 
 # Set to int (1, 2, 3), list ([1,3], etc.), or None (all scenarios)
@@ -126,7 +127,6 @@ def main():
         (f"Workload 3 ({len(workload3)} instr)", workload3),
         (f"Workload 4 ({len(workload4)} instr)", workload4),
         (f"Workload 5 ({len(workload5)} instr)", workload5),
-        (f"Workload 6 ({len(workload6)} instr)", workload6)
 
     ]
     

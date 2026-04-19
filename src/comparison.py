@@ -382,18 +382,59 @@ def run_full_comparison(R: int, n: int, c_max: int, t_max_ns: float,
         csv_path = os.path.join(data_dir, f'comparison_results_{timestamp}.csv')
         
         with open(csv_path, 'w', newline='') as csvfile:
+            writer = csv.writer(csvfile)
+            
+            # Header with experiment parameters
+            writer.writerow(['EXPERIMENT PARAMETERS'])
+            writer.writerow(['Parameter', 'Value'])
+            writer.writerow(['R (Logical Addresses)', R])
+            writer.writerow(['n (Qubits per Register)', n])
+            writer.writerow(['c_max (Max Cost Threshold)', c_max])
+            writer.writerow(['t_max_ns (Max Time Threshold)', f'{t_max_ns}'])
+            writer.writerow(['shots', shots])
+            writer.writerow(['initial_state', initial_state])
+            writer.writerow([])
+            
+            # Data table header
+            writer.writerow(['DETAILED RESULTS'])
             fieldnames = ['Run', 'Workload', 'SQM_Fidelity', 'SWAP_Fidelity', 
                          'Difference', 'Percent_Diff', 'SQM_Qubits', 'SWAP_Qubits']
-            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-            writer.writeheader()
-            writer.writerows(csv_data)
+            writer.writerow(fieldnames)
+            
+            # Write data rows
+            for row in csv_data:
+                writer.writerow([
+                    row['Run'],
+                    row['Workload'],
+                    row['SQM_Fidelity'],
+                    row['SWAP_Fidelity'],
+                    row['Difference'],
+                    row['Percent_Diff'],
+                    row['SQM_Qubits'],
+                    row['SWAP_Qubits']
+                ])
         
         print(f"✓ CSV saved: {csv_path}")
         
-        # Add summary row to CSV
+        # Add summary row to CSV (with experiment parameters)
         summary_path = os.path.join(data_dir, f'comparison_summary_{timestamp}.csv')
         with open(summary_path, 'w', newline='') as csvfile:
             writer = csv.writer(csvfile)
+            
+            # Experiment Parameters section
+            writer.writerow(['EXPERIMENT PARAMETERS'])
+            writer.writerow(['Parameter', 'Value'])
+            writer.writerow(['R (Logical Addresses)', R])
+            writer.writerow(['n (Qubits per Register)', n])
+            writer.writerow(['c_max (Max Cost Threshold)', c_max])
+            writer.writerow(['t_max_ns (Max Time Threshold)', f'{t_max_ns}'])
+            writer.writerow(['shots', shots])
+            writer.writerow(['initial_state', initial_state])
+            writer.writerow(['num_workloads', len(workloads)])
+            writer.writerow([])
+            
+            # Results section
+            writer.writerow(['COMPARATIVE ANALYSIS RESULTS'])
             writer.writerow(['Metric', 'Value'])
             writer.writerow(['Total Workloads', len(results)])
             writer.writerow(['SQM Better', sqm_better_count])

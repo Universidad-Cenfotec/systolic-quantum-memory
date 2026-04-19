@@ -267,8 +267,8 @@ class SQMCompiler:
             #print(f"  [Instruction] {instruction}")
 
             if instruction.startswith("IDLE_"):
-                # IDLE instruction: Apply thermal relaxation via native 'id' gate
-                # Each IDLE unit maps to one identity gate with attached thermal noise
+                # IDLE instruction: Apply thermal relaxation with intermediate tele-refresh checks
+                # If time_ns exceeds t_max_ns, we split into blocks and check for refresh between them
                 num_units = int(instruction.split("_")[1])
                 time_ns = num_units * self.time_idle_ns
                 
@@ -277,29 +277,47 @@ class SQMCompiler:
                 # Get only the qubits that are currently active (holding data or in operation register)
                 active_qubits = self._get_active_qubits_for_idle()
                 
-                # Apply thermal relaxation only to active qubits
-                # This represents realistic wear-down: only used qubits experience decoherence
-                if self.backend_manager.use_native_delay:
-                    # Hardware backend: Use native delay instruction for precise timing
-                    print(f"    [Hardware] Using qc.delay() for native timing ({time_ns:.0f} ns)")
-                    if time_ns > 0:  # Avoid zero-delay to IBM Heron compiler (Scenario 2)
-                        for qubit in active_qubits:
-                            qc.delay(int(time_ns), qubit, unit='ns')
-                    else:
-                        print(f"    [Hardware] Skipping zero-delay instruction (idle_ns=0)")
-                else:
-                    # Simulation backend: Use id() gates with attached thermal noise model
-                    print(f"    [Simulation] Using qc.id() gates with thermal noise model")
-                    for _ in range(num_units):
-                        for qubit in active_qubits:
-                            qc.id(qubit)
+                # Calculate number of blocks based on t_max_ns threshold
+                # If time_ns <= t_max_ns: 1 block (apply all at once)
+                # If time_ns > t_max_ns: split into chunks of size t_max_ns
+                num_blocks = max(1, int(np.ceil(time_ns / self.t_max_ns)))
                 
-                # (Time tracking is handled by QPC via update_odometer() calls)
-
-                qc.barrier()  # Prevent inter-SWAP optimization
-                for logical_addr in range(self.R):    
-                    self._check_and_apply_tele_refresh(qc, logical_addr, gate_cost=0,
-                    time_dt=time_ns)
+                if num_blocks > 1:
+                    print(f"    -> Splitting {time_ns:.0f} ns into {num_blocks} block(s) (t_max_ns={self.t_max_ns})")
+                
+                # Apply delays in blocks, checking for tele-refresh between blocks
+                remaining_time = time_ns
+                for block_idx in range(num_blocks):
+                    # Calculate block time for this iteration (never exceeds t_max_ns)
+                    block_time = min(self.t_max_ns, remaining_time)
+                    
+                    if num_blocks > 1:
+                        print(f"      Block {block_idx + 1}/{num_blocks}: Applying {block_time:.0f} ns delay")
+                    
+                    # Apply thermal relaxation only to active qubits
+                    # This represents realistic wear-down: only used qubits experience decoherence
+                    if self.backend_manager.use_native_delay:
+                        # Hardware backend: Use native delay instruction for precise timing
+                        if block_time > 0:  # Avoid zero-delay to IBM Heron compiler (Scenario 2)
+                            for qubit in active_qubits:
+                                qc.delay(int(block_time), qubit, unit='ns')
+                        else:
+                            print(f"      [Hardware] Skipping zero-delay instruction (block_time=0)")
+                    else:
+                        # Simulation backend: Use id() gates with attached thermal noise model
+                        num_id_gates = max(1, int(block_time / self.time_idle_ns))
+                        for _ in range(num_id_gates):
+                            for qubit in active_qubits:
+                                qc.id(qubit)
+                    
+                    qc.barrier()  # Prevent inter-SWAP optimization
+                    
+                    # Check odometer and apply tele-refresh if threshold exceeded
+                    # This happens between blocks, ensuring we don't overshoot t_max_ns
+                    for logical_addr in range(self.R):
+                        self._check_and_apply_tele_refresh(qc, logical_addr, gate_cost=0, time_dt=block_time)
+                    
+                    remaining_time -= block_time
                 
             elif instruction.startswith("READ_"):
                 # READ instruction: READ_ij where ij is binary address
