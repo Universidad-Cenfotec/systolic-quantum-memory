@@ -59,7 +59,7 @@ class TmaxValidatorId:
         N: int = 1,
         t1_ns: float = 192_566,
         t2_ns: float = 35_887,
-        idle_time_ns: float = 1350,
+        idle_time_ns: float = 1000,
     ) -> None:
         """
         Args:

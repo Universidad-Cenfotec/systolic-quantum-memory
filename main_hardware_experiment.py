@@ -15,6 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from src.comparison import run_real_comparison
 from src.backends.ibm_hardware_backend import IBMHardwareBackend
+from src.utils.hardware_results_processor import save_hardware_multi_workload_results
 
 # ══════════════════════════════════════════════════════════════════════════════
 # CONFIGURATION: Multi-Workload Hardware Experiment
@@ -23,22 +24,22 @@ from src.backends.ibm_hardware_backend import IBMHardwareBackend
 # Compiler Configuration (Minimal for hardware - preserve quota)
 R = 1          # Number of memory registers (single register = minimal)
 n = 1          # Qubits per register (single qubit = fastest test)
-c_max = 3      # Gate cost threshold (aggressive refresh)
-t_max_ns = 1350*50 # Time threshold (nanoseconds)
+c_max = 10      # Gate cost threshold (aggressive refresh)
+t_max_ns = 1350*70 # Time threshold (nanoseconds)
 
 # Hardware Execution Configuration
 shots = 1000         # CRITICAL: Keep low to preserve IBM quota (10 min/month)
 
+flow=1 # 0 = flow, 1 = memory
 # Quantum State Configuration
-initial_state = 1   # 0 = |0⟩ target, 1 = |1⟩ target
+initial_state = 0   # 0 = |0⟩ target, 1 = |1⟩ target
 
 # Test Workloads (Multiple workloads for comparison)
-workload1 = ["IDLE_40"]
-workload2 = ["IDLE_80"]
-workload3 = ["IDLE_160"]
-workload4 = ["IDLE_320"]
-workload5 = ["IDLE_500"]
-
+workload1 = ["WRITE_0", "IDLE_40","READ_0"]
+workload2 = ["WRITE_0", "IDLE_80","READ_0"]
+workload3 = ["WRITE_0", "IDLE_160", "READ_0"]
+workload4 = ["WRITE_0", "IDLE_320", "READ_0"]
+workload5 = ["WRITE_0", "IDLE_500", "READ_0"]
 
 
 
@@ -128,6 +129,7 @@ def main():
         (f"Workload 4 ({len(workload4)} instr)", workload4),
         (f"Workload 5 ({len(workload5)} instr)", workload5),
 
+
     ]
     
     print(f"\n[Workloads to Execute]")
@@ -176,7 +178,8 @@ def main():
                 workload=workload_data,
                 backend_manager=backend_manager,
                 initial_state=initial_state,
-                scenarios=scenario  # Pass scenario filter
+                scenarios=scenario,  # Pass scenario filter
+                flow=flow  # 0=memory registers, 1=operation register
             )
             
             # Add workload name to results for tracking
@@ -197,7 +200,7 @@ def main():
         
         if all_workload_results:
             # Call processor with all workloads
-            from src.utils.hardware_results_processor import save_hardware_multi_workload_results
+
             save_hardware_multi_workload_results(
                 all_workload_results=all_workload_results,
                 backend_info=backend_info,

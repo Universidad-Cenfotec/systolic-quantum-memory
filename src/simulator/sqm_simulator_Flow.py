@@ -1,6 +1,6 @@
 # ============================================================
-# SQM Research Project - Main Simulator & Compiler
-# Systolic Quantum Memory
+# SQM Research Project - Flow Simulator & Compiler
+# Systolic Quantum Memory - Fidelity measured on Operation Register
 # Authors: Danny Valerio-Ramírez & Santiago Núñez-Corrales
 # Role: Quantum Compiler Architect (Senior)
 # ============================================================
@@ -28,7 +28,14 @@ from src.backends.backend_interface import BackendInterface
 from src.backends.aer_simulator_backend import AerSimulatorBackend
 
 
-class SQMCompiler:
+class SQMFlowCompiler:
+    """
+    SQM Compiler variant that measures fidelity on the operation_register (q_work).
+    
+    Identical compilation logic to SQMCompiler (teleportation, IDLE, READ, WRITE with QPC),
+    but the execute() method measures only the operation register instead of memory registers.
+    This allows evaluating the quantum state "in transit" through the systolic pipeline.
+    """
 
     # Constant: SWAP operation duration in nanoseconds (NISQ-level)
     SWAP_TIME_NS = 1350
@@ -122,8 +129,9 @@ class SQMCompiler:
         self._built_registers: Dict[str, QuantumRegister] = {}
 
         state_label = "|0>" if initial_state == 0 else "|1>"
-        print(f"[SQM Compiler] Initialized: R={R}, n={n}, c_max={c_max}, t_max={t_max_ns} ns")
-        print(f"[SQM Compiler] Fidelity target state: {state_label}")
+        print(f"[SQM Flow Compiler] Initialized: R={R}, n={n}, c_max={c_max}, t_max={t_max_ns} ns")
+        print(f"[SQM Flow Compiler] Fidelity target state: {state_label}")
+        print(f"[SQM Flow Compiler] Fidelity measured on: OPERATION REGISTER (q_work)")
         print(f"[Backend] {self.backend.__class__.__name__} with {self.qubit_mapper.n_qubits} qubits")
 
     # --------------------------------------------------------------
@@ -162,6 +170,7 @@ class SQMCompiler:
 
     # --------------------------------------------------------------
     # COMPILER MAIN METHOD: COMPILE WORKLOAD
+    # (Identical to SQMCompiler - same teleportation, IDLE, READ, WRITE logic)
     # --------------------------------------------------------------
 
     def compile_workload(self, workload: List[str]) -> QuantumCircuit:
@@ -246,25 +255,22 @@ class SQMCompiler:
             for qubit in qr_work:
                 qc.x(qubit)
             
+            """
             # Apply X to all memory qubits
             for i in range(self.R):
                         qr_orig = self._built_registers[f"mem_orig_{i}"]
                         for qubit in qr_orig:
-                            qc.x(qubit)
+                            qc.x(qubit)"""
             
             qc.barrier()
-            #print("[Compilation] Initial state |1...1> prepared for all qubits")
         else:
             print("\n[Compilation] Using default initial state |0...0> (no X gates applied)")
-
-        #print(f"\n[Compilation] Starting workload processing: {len(workload)} instructions")
 
         # ----------------------------------------------------------
         # Phase 1: Process workload instructions
         # ----------------------------------------------------------
 
         for instruction in workload:
-            #print(f"  [Instruction] {instruction}")
 
             if instruction.startswith("IDLE_"):
                 # IDLE instruction: Apply thermal relaxation with intermediate tele-refresh checks
@@ -275,8 +281,6 @@ class SQMCompiler:
                 print(f"    -> Wear-down sequence: {num_units} idle units ({time_ns:.0f} ns total)")
                 
                 # Calculate number of blocks based on t_max_ns threshold
-                # If time_ns <= t_max_ns: 1 block (apply all at once)
-                # If time_ns > t_max_ns: split into chunks of size t_max_ns
                 num_blocks = max(1, int(np.ceil(time_ns / self.t_max_ns)))
                 
                 if num_blocks > 1:
@@ -285,7 +289,6 @@ class SQMCompiler:
                 # Apply delays in blocks, checking for tele-refresh between blocks
                 remaining_time = time_ns
                 for block_idx in range(num_blocks):
-                    # Calculate block time for this iteration (never exceeds t_max_ns)
                     block_time = min(self.t_max_ns, remaining_time)
                     
                     if num_blocks > 1:
@@ -296,56 +299,45 @@ class SQMCompiler:
                     # (ORIGINAL↔BACKUP), so the register holding the data changes.
                     active_qubits = self._get_active_qubits_for_idle()
                     
-                    # Apply thermal relaxation only to active qubits
-                    # This represents realistic wear-down: only used qubits experience decoherence
                     if self.backend_manager.use_native_delay:
-                        # Hardware backend: Use native delay instruction for precise timing
-                        if block_time > 0:  # Avoid zero-delay to IBM Heron compiler (Scenario 2)
+                        if block_time > 0:
                             for qubit in active_qubits:
                                 qc.delay(int(block_time), qubit, unit='ns')
                         else:
                             print(f"      [Hardware] Skipping zero-delay instruction (block_time=0)")
                     else:
-                        # Simulation backend: Use id() gates with attached thermal noise model
                         num_id_gates = max(1, int(block_time / self.time_idle_ns))
                         for _ in range(num_id_gates):
                             for qubit in active_qubits:
                                 qc.id(qubit)
                     
-                    qc.barrier()  # Prevent inter-SWAP optimization
+                    qc.barrier()
                     
-                    # Check odometer and apply tele-refresh if threshold exceeded
-                    # This happens between blocks, ensuring we don't overshoot t_max_ns
                     for logical_addr in range(self.R):
                         self._check_and_apply_tele_refresh(qc, logical_addr, gate_cost=0, time_dt=block_time)
                     
                     remaining_time -= block_time
                 
             elif instruction.startswith("READ_"):
-                # READ instruction: READ_ij where ij is binary address
                 address_binary = instruction.split("_")[1]
-                logical_addr = int(address_binary, 2)  # Binary to decimal
+                logical_addr = int(address_binary, 2)
 
                 if logical_addr >= self.R:
                     raise ValueError(f"Logical address {logical_addr} out of range [0, {self.R - 1}]")
 
                 print(f"    -> READ from Mem[{logical_addr}]")
 
-                # Determine source register (Original or Backup) - consultando al QPC
                 if self.qpc.get_location(logical_addr) == MemLocation.ORIGINAL:
                     source_reg = self._built_registers[f"mem_orig_{logical_addr}"]
                 else:
                     source_reg = self._built_registers[f"mem_backup_{logical_addr}"]
 
-                # Apply SWAP between source and work register
                 qc = self.work_phase.apply_swap(qc, source_reg, qr_work)
 
-                qc.barrier()  # Prevent inter-SWAP optimization
-                # Check if odometer threshold exceeded
+                qc.barrier()
                 self._check_and_apply_tele_refresh(qc, logical_addr, gate_cost=1, time_dt=self.SWAP_TIME_NS)
 
             elif instruction.startswith("WRITE_"):
-                # WRITE instruction: WRITE_ij
                 address_binary = instruction.split("_")[1]
                 logical_addr = int(address_binary, 2)
 
@@ -354,23 +346,18 @@ class SQMCompiler:
 
                 print(f"    -> WRITE to Mem[{logical_addr}]")
 
-                # Determine destination register - consultando al QPC
                 if self.qpc.get_location(logical_addr) == MemLocation.ORIGINAL:
                     dest_reg = self._built_registers[f"mem_orig_{logical_addr}"]
                 else:
                     dest_reg = self._built_registers[f"mem_backup_{logical_addr}"]
 
-                # Apply SWAP between work register and destination
                 qc = self.work_phase.apply_swap(qc, qr_work, dest_reg)
 
-                qc.barrier()  # Prevent inter-SWAP optimization
-                # Check if odometer threshold exceeded
+                qc.barrier()
                 self._check_and_apply_tele_refresh(qc, logical_addr, gate_cost=1, time_dt=self.SWAP_TIME_NS)
 
             else:
                 print(f"  [WARNING] Unknown instruction: {instruction}")
-              # Prevent inter-SWAP optimization
-            #print(qc.draw(output="text"))   
 
         print(f"[Compilation] Workload processing complete")
         return qc
@@ -387,13 +374,10 @@ class SQMCompiler:
         # 2. For each logical address, add qubits from the register that holds the data
         for logical_addr in range(self.R):
             if self.qpc.get_location(logical_addr) == MemLocation.ORIGINAL:
-                # Data is in Original memory
                 qr_data = self._built_registers[f"mem_orig_{logical_addr}"]
             else:
-                # Data is in Backup memory
                 qr_data = self._built_registers[f"mem_backup_{logical_addr}"]
             
-            # Add all qubits from the active data register
             for qubit in qr_data:
                 active_qubits.append(qubit)
         
@@ -410,7 +394,6 @@ class SQMCompiler:
         if requires_refresh:
             print(f"    [Odometer] Threshold exceeded for Mem[{logical_addr}] -> Tele-refreshing")
 
-            # Determine source/destination registers based on current QPC location
             current_location = self.qpc.get_location(logical_addr)
             if current_location == MemLocation.ORIGINAL:
                 source_reg = self._built_registers[f"mem_orig_{logical_addr}"]
@@ -419,30 +402,30 @@ class SQMCompiler:
                 source_reg = self._built_registers[f"mem_backup_{logical_addr}"]
                 dest_reg = self._built_registers[f"mem_orig_{logical_addr}"]
 
-            # Retrieve pre-allocated teleportation ancilla for this logical pair
             tele_ancilla = self._built_registers[f"tele_ancilla_{logical_addr}"]
             cr_bell = self.tele_cr_bell_registers[logical_addr]
 
-            # Apply quantum teleportation using pre-allocated ancilla
             qc = self.teleportation.build_circuit(
                 qc, source_reg, dest_reg,
                 ancilla_reg=tele_ancilla,
                 cr_bell=cr_bell,
             )
 
-            # tick() internally alternates location (ORIGINAL→BACKUP) and resets odometer
             new_location = self.qpc.tick(logical_addr)
-            # (Odometer reset is handled by QPC.tick() internally)
 
             print(f"    [Tele-Refresh] Mem[{logical_addr}] now stored in {new_location.value}")
 
     # --------------------------------------------------------------
     # EXECUTION VIA BACKEND MANAGER
+    # FLOW VARIANT: Measures fidelity on OPERATION REGISTER (q_work)
     # --------------------------------------------------------------
 
     def execute(self, circuit: QuantumCircuit, shots: int = 1024) -> Dict[str, Any]:
         """
         Execute the quantum circuit via the injected backend manager.
+        
+        FLOW VARIANT: Measures fidelity on the operation register (q_work)
+        instead of memory registers. This measures only n qubits.
         
         Parameters
         ----------
@@ -465,46 +448,32 @@ class SQMCompiler:
         
         print(f"\n[Execution] Preparing circuit for {shots} shots")
         print(f"[Execution] Seeds configured for reproducibility")
+        print(f"[Execution] FLOW MODE: Measuring fidelity on operation register (q_work)")
 
         try:
             qc_measured = circuit.copy()
             
-   
-            # Measure ALL n*R qubits (all memory registers) for correct fidelity
-            cr_final = ClassicalRegister(self.n * self.R, name="final_meas")
+            # ──────────────────────────────────────────────────────
+            # FLOW: Measure ONLY the operation register (q_work)
+            # Only n qubits instead of n*R
+            # ──────────────────────────────────────────────────────
+            cr_final = ClassicalRegister(self.n, name="final_meas")
             qc_measured.add_register(cr_final)
 
-   
-            # The data location changes with each tele-refresh operation
-
-            classical_bit_index = 0
-            for logical_addr in range(self.R):
-                # Determine which register holds the data by consulting QPC
-                if self.qpc.get_location(logical_addr) == MemLocation.ORIGINAL:
-                    # Data is in Original memory
-                    target_reg = self._built_registers[f"mem_orig_{logical_addr}"]
-                else:
-                    # Data is in Backup memory
-                    target_reg = self._built_registers[f"mem_backup_{logical_addr}"]
-                
-                # Measure only the register containing the data
-                for i in range(self.n):
-                    qc_measured.measure(target_reg[i], cr_final[classical_bit_index])
-                    classical_bit_index += 1
+            # Measure the operation register (q_work)
+            qr_work = self._built_registers["q_work"]
+            for i in range(self.n):
+                qc_measured.measure(qr_work[i], cr_final[i])
 
             # ------------------------------------------------------------------
             # TRANSPILATION WITH EXPLICIT SEEDS
             # ------------------------------------------------------------------
             print("[Transpile] Translating to hardware topology with seed=42...")
             
-            # Extract initial layout before transpilation
             initial_layout = self._get_initial_layout(qc_measured)
-            
+            print(qc_measured.draw(output='text'))
             print("[Noise Model] Extracting noise characteristics...")
-            # Note: qc_measured.draw(output="text") produces Unicode chars, skip for Windows compat
-            print(qc_measured.draw(output="text"))
            
-            # Transpile with seed for reproducibility
             qc_transpiled = transpile(
                 qc_measured,
                 backend=self.backend,
@@ -512,23 +481,21 @@ class SQMCompiler:
                 initial_layout=initial_layout,
                 seed_transpiler=42
             )
-            #print(qc_transpiled.draw(output="text"))
 
             print(f"[Execution] Sending circuit to Backend Manager...")
-            # Execute via backend manager (no more manual simulator instantiation)
             result = self.backend_manager.run(qc_transpiled, shots=shots, seed=42)
             
             counts = result.get_counts()
             total_counts = sum(counts.values())
             
-            # Extract results: Compare measurement bits against target state
-            # We measure n*R bits total (n qubits per logical address, only from the register holding the data)
+            # ──────────────────────────────────────────────────────
+            # FLOW: Compare against target state for n qubits only
+            # ──────────────────────────────────────────────────────
             fidelity_count = 0
-            target_state_bits = self.n * self.R
+            target_state_bits = self.n  # Only n qubits (operation register)
             target_state = ('1' * target_state_bits) if self.initial_state == 1 else ('0' * target_state_bits)
             
             for outcome, count in counts.items():
-                # Parse measurement outcome (unified parser for multiple registers)
                 final_meas_bits = self._parse_measurement_outcome(outcome)
             
                 if final_meas_bits == target_state:
@@ -543,7 +510,7 @@ class SQMCompiler:
             print(f"  Size: {qc_transpiled.size()}")
             
             state_label = "|1...1>" if self.initial_state == 1 else "|0...0>"
-            print(f"  Fidelity ({state_label} success for {self.n * self.R} data qubits in their current location): {fidelity:.4f}")
+            print(f"  Fidelity FLOW ({state_label} success for {self.n} qubits in operation register): {fidelity:.4f}")
             
             # Show top outcomes
             if counts:
@@ -560,7 +527,6 @@ class SQMCompiler:
             print(f"[ERROR] Execution failed: {e}")
             import traceback
             traceback.print_exc()
-            # Return graceful degradation result
             return {
                 "fidelity": 0.0,
                 "counts": {},

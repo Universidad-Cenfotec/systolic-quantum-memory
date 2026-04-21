@@ -1,7 +1,7 @@
 # ============================================================
-# SQM Research Project - Main Simulator & Compiler
-# Systolic Quantum Teleportation Memory
-# Authors: Danny Valerio-Ram?rez & Santiago N??ez-Corrales
+# SQM Research Project - Flow Simulator & Compiler
+# Systolic Quantum Teleportation Memory - Fidelity measured on Operation Register
+# Authors: Danny Valerio-Ramírez & Santiago Núñez-Corrales
 # Role: Quantum Compiler Architect (Senior)
 # ============================================================
 
@@ -26,7 +26,14 @@ from src.backends.backend_interface import BackendInterface
 from src.backends.aer_simulator_backend import AerSimulatorBackend
 
 
-class SwapCompiler:
+class SwapFlowCompiler:
+    """
+    SWAP Compiler variant that measures fidelity on the operation_register (q_work).
+    
+    Identical compilation logic to SwapCompiler (READ, WRITE, IDLE with delays),
+    but the execute() method measures only the operation register instead of memory registers.
+    This allows evaluating the quantum state "in transit" through the systolic pipeline.
+    """
 
     # Constant: SWAP operation duration in nanoseconds (NISQ-level)
     SWAP_TIME_NS = 1350
@@ -95,8 +102,9 @@ class SwapCompiler:
         self._built_registers: Dict[str, QuantumRegister] = {}
 
         state_label = "|0>" if initial_state == 0 else "|1>"
-        print(f"[Swap Compiler] Initialized: R={R}, n={n}, c_max={c_max}, t_max={t_max_ns} ns")
-        print(f"[Swap Compiler] Fidelity target state: {state_label}")
+        print(f"[Swap Flow Compiler] Initialized: R={R}, n={n}, c_max={c_max}, t_max={t_max_ns} ns")
+        print(f"[Swap Flow Compiler] Fidelity target state: {state_label}")
+        print(f"[Swap Flow Compiler] Fidelity measured on: OPERATION REGISTER (q_work)")
         print(f"[Backend] {self.backend.__class__.__name__} with {self.qubit_mapper.n_qubits} qubits")
 
     # --------------------------------------------------------------
@@ -134,6 +142,7 @@ class SwapCompiler:
 
     # --------------------------------------------------------------
     # COMPILER MAIN METHOD: COMPILE WORKLOAD
+    # (Identical to SwapCompiler - same READ, WRITE, IDLE logic)
     # --------------------------------------------------------------
 
     def compile_workload(self, workload: List[str]) -> QuantumCircuit:
@@ -164,14 +173,10 @@ class SwapCompiler:
         # ----------------------------------------------------------
         # PER-BIT TOPOLOGY ALLOCATION (QUBIT-CENTRIC)
         # ----------------------------------------------------------
-        # Each qubit i of q_work connects to all mem_r_i registers
-        # Structure: Each bit i has q_work_i connected to mem_0_i, mem_1_i, ..., mem_(R-1)_i
-        # ----------------------------------------------------------
         
         print("\n[Compilation] Allocating per-bit topology (q_work[i] connects to all mem_r[i])...")
         
-        # Build chain configuration: q_work first, then all memory registers
-        chain_config = [("q_work", self.n)]  # Operation register as first element
+        chain_config = [("q_work", self.n)]
         for i in range(self.R):
             chain_config.append((f"mem_{i}", self.n))
         
@@ -186,7 +191,6 @@ class SwapCompiler:
             if reg_id == "q_work":
                 qr = self._built_registers["q_work"]
             else:
-                # mem_0, mem_1, ...
                 qr = self._built_registers[reg_id]
             
             for local_idx, physical_qubit in enumerate(physical_qubits):
@@ -212,45 +216,37 @@ class SwapCompiler:
             # Apply X to operation register
             for qubit in qr_work:
                 qc.x(qubit)
-            
+            """
             # Apply X to all memory qubits
             for i in range(self.R):
                 qr_mem = self._built_registers[f"mem_{i}"]
                 # Apply X to memory
                 for qubit in qr_mem:
                     qc.x(qubit)
-            
+            """
             qc.barrier()
             print("[Compilation] Initial state |1...1> prepared for all qubits")
         else:
             print("\n[Compilation] Using default initial state |0...0> (no X gates applied)")
-
-        #print(f"\n[Compilation] Starting workload processing: {len(workload)} instructions")
 
         # ----------------------------------------------------------
         # Phase 1: Process workload instructions
         # ----------------------------------------------------------
 
         for instruction in workload:
-            #print(f"  [Instruction] {instruction}")
 
             if instruction.startswith("IDLE_"):
                 # IDLE instruction: Apply thermal relaxation via native 'id' gate
-                # Each IDLE unit maps to one identity gate with attached thermal noise
                 num_units = int(instruction.split("_")[1])
                 time_ns = num_units * self.time_idle_ns
                 
                 print(f"    -> Wear-down sequence: {num_units} idle units ({time_ns:.0f} ns total)")
                 
-                # Apply native identity gate to operation register
-                # The thermal_relaxation_error attached to 'id' will be applied
                 if self.backend_manager.use_native_delay:
-                    # Hardware backend: Use native delay instruction for precise timing
                     print(f"    [Hardware] Using qc.delay() for native timing ({time_ns:.0f} ns)")
-                    if time_ns > 0:  # Avoid zero-delay to IBM Heron compiler (Scenario 2)
+                    if time_ns > 0:
                         for qubit in qr_work:
                             qc.delay(int(time_ns), qubit, unit='ns')
-                        # Also apply to memory registers for complete timing
                         for i in range(self.R):
                             qr_mem = self._built_registers[f"mem_{i}"]
                             for qubit in qr_mem:
@@ -258,11 +254,9 @@ class SwapCompiler:
                     else:
                         print(f"    [Hardware] Skipping zero-delay instruction (idle_ns=0)")
                 else:
-                    # Simulation backend: Use id() gates with attached thermal noise model
                     print(f"    [Simulation] Using qc.id() gates with thermal noise model")
                     for _ in range(num_units):
                         qc.id(qr_work)
-                    # Optional: Also apply to inactive memory registers for complete wear-down modeling
                     for i in range(self.R):
                         qr_mem = self._built_registers[f"mem_{i}"]
                         for _ in range(num_units):
@@ -270,25 +264,18 @@ class SwapCompiler:
                                 qc.id(qubit)
                 
             elif instruction.startswith("READ_"):
-                # READ instruction: READ_ij where ij is binary address
                 address_binary = instruction.split("_")[1]
-                logical_addr = int(address_binary, 2)  # Binary to decimal
+                logical_addr = int(address_binary, 2)
 
                 if logical_addr >= self.R:
                     raise ValueError(f"Logical address {logical_addr} out of range [0, {self.R - 1}]")
 
                 print(f"    -> READ from Mem[{logical_addr}]")
 
-                # Get source register
                 source_reg = self._built_registers[f"mem_{logical_addr}"]
-
-                # Apply SWAP between source and work register
                 qc = self.work_phase.apply_swap(qc, source_reg, qr_work)
 
-
-
             elif instruction.startswith("WRITE_"):
-                # WRITE instruction: WRITE_ij
                 address_binary = instruction.split("_")[1]
                 logical_addr = int(address_binary, 2)
 
@@ -297,29 +284,27 @@ class SwapCompiler:
 
                 print(f"    -> WRITE to Mem[{logical_addr}]")
 
-                # Get destination register
                 dest_reg = self._built_registers[f"mem_{logical_addr}"]
-
-                # Apply SWAP between work register and destination
                 qc = self.work_phase.apply_swap(qc, qr_work, dest_reg)
-
-
 
             else:
                 print(f"  [WARNING] Unknown instruction: {instruction}")
             qc.barrier()  # Prevent inter-SWAP optimization
-            print(qc.draw(output="text"))   
 
         print(f"[Compilation] Workload processing complete")
         return qc
 
     # --------------------------------------------------------------
     # EXECUTION VIA BACKEND MANAGER
+    # FLOW VARIANT: Measures fidelity on OPERATION REGISTER (q_work)
     # --------------------------------------------------------------
 
     def execute(self, circuit: QuantumCircuit, shots: int = 1024) -> Dict[str, Any]:
         """
         Execute the quantum circuit via the injected backend manager.
+        
+        FLOW VARIANT: Measures fidelity on the operation register (q_work)
+        instead of memory registers. This measures only n qubits.
         
         Parameters
         ----------
@@ -342,34 +327,29 @@ class SwapCompiler:
 
         print(f"\n[Execution] Preparing circuit for {shots} shots")
         print(f"[Execution] Seeds configured for reproducibility")
+        print(f"[Execution] FLOW MODE: Measuring fidelity on operation register (q_work)")
 
         try:
             qc_measured = circuit.copy()
             
-            # ALWAYS add a specific register for final fidelity
-            # CRITICAL: Measure ALL n*R qubits (all memory registers) for correct fidelity
-            cr_final = ClassicalRegister(self.n * self.R, name="final_meas")
+            # ──────────────────────────────────────────────────────
+            # FLOW: Measure ONLY the operation register (q_work)
+            # Only n qubits instead of n*R
+            # ──────────────────────────────────────────────────────
+            cr_final = ClassicalRegister(self.n, name="final_meas")
             qc_measured.add_register(cr_final)
 
-            # Measure ALL memory registers into cr_final
-            classical_bit_index = 0
-            for logical_addr in range(self.R):
-                # Each memory register stores n qubits
-                memory_reg = self._built_registers[f"mem_{logical_addr}"]
-                for i in range(self.n):
-                    qc_measured.measure(memory_reg[i], cr_final[classical_bit_index])
-                    classical_bit_index += 1
+            # Measure the operation register (q_work)
+            qr_work = self._built_registers["q_work"]
+            for i in range(self.n):
+                qc_measured.measure(qr_work[i], cr_final[i])
 
             print("[Transpile] Translating to hardware topology with seed=42...")
             
-            # Extract initial layout before transpilation
             initial_layout = self._get_initial_layout(qc_measured)
-
-            # DEBUG: Uncomment below to visualize circuit before transpilation
-            #print(qc_measured.draw(output="text"))
+            print(qc_measured.draw(output='text'))
             print("[Noise Model] Extracting noise characteristics...")
             
-            # Transpile with seed for reproducibility
             qc_transpiled = transpile(
                 qc_measured,
                 backend=self.backend,
@@ -377,22 +357,21 @@ class SwapCompiler:
                 initial_layout=initial_layout,
                 seed_transpiler=42
             )
-            #print(qc_transpiled.draw(output="text"))
             
             print(f"[Execution] Sending circuit to Backend Manager...")
-            # Execute via backend manager (no more manual simulator instantiation)
             result = self.backend_manager.run(qc_transpiled, shots=shots, seed=42)
             
             counts = result.get_counts()
             total_counts = sum(counts.values())
             
-            # Extract results: Compare ALL n*R measurement bits against target state
+            # ──────────────────────────────────────────────────────
+            # FLOW: Compare against target state for n qubits only
+            # ──────────────────────────────────────────────────────
             fidelity_count = 0
-            target_state_bits = self.n * self.R
+            target_state_bits = self.n  # Only n qubits (operation register)
             target_state = ('1' * target_state_bits) if self.initial_state == 1 else ('0' * target_state_bits)
             
             for outcome, count in counts.items():
-                # Parse measurement outcome (unified parser for multiple registers)
                 measured_bits = self._parse_measurement_outcome(outcome)
                 if measured_bits == target_state:
                     fidelity_count += count
@@ -406,7 +385,7 @@ class SwapCompiler:
             print(f"  Size: {qc_transpiled.size()}")
             
             state_label = "|1...1>" if self.initial_state == 1 else "|0...0>"
-            print(f"  Fidelity ({state_label} success for all {self.n * self.R} memory qubits): {fidelity:.4f}")
+            print(f"  Fidelity FLOW ({state_label} success for {self.n} qubits in operation register): {fidelity:.4f}")
             
             # Show top outcomes
             if counts:
@@ -423,7 +402,6 @@ class SwapCompiler:
             print(f"[ERROR] Execution failed: {e}")
             import traceback
             traceback.print_exc()
-            # Return graceful degradation result
             return {
                 "fidelity": 0.0,
                 "counts": {},
@@ -448,5 +426,3 @@ class SwapCompiler:
             "logical_to_physical_map": self.logical_to_physical_map,
             "available_qubits": len(self.qubit_mapper.available_qubits),
         }
-
-

@@ -1,0 +1,19 @@
+EXPERIMENT PARAMETERS
+Parameter,Value
+R (Logical Addresses),1
+n (Qubits per Register),1
+c_max (Max Cost Threshold),10
+t_max_ns (Max Time Threshold),6750
+shots,4000
+initial_state,1
+num_workloads,10
+
+COMPARATIVE ANALYSIS RESULTS
+Metric,Value
+Total Workloads,10
+SQM Better,5
+SWAP Better,5
+Equal,0
+Avg SQM Fidelity,0.4984
+Avg SWAP Fidelity,0.4420
+Avg Difference,+0.0564

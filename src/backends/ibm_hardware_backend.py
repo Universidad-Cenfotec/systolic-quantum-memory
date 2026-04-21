@@ -181,7 +181,7 @@ class IBMHardwareBackend(BackendInterface):
     """
 
     # Fallback idle time if calibration data unavailable (typical SWAP operation)
-    FALLBACK_IDLE_TIME_NS = 1350
+    FALLBACK_IDLE_TIME_NS = 1000
 
     def __init__(
         self,

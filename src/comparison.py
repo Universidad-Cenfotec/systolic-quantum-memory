@@ -26,6 +26,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.backends.backend_interface import BackendInterface
 from src.simulator.sqm_simulator import SQMCompiler
 from src.simulator.swap_simulator import SwapCompiler
+from src.simulator.sqm_simulator_Flow import SQMFlowCompiler
+from src.simulator.swap_simulator_Flow import SwapFlowCompiler
 from src.functions.qubit_mapper import QubitMapper
 from src.utils.hardware_results_processor import save_hardware_comparison_results
 
@@ -163,6 +165,136 @@ def run_swap_compiler(R: int, n: int, c_max: int, t_max_ns: float,
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# Flow Compiler Execution Functions (Fidelity on Operation Register)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def run_sqm_flow_compiler(R: int, n: int, c_max: int, t_max_ns: float, 
+                     workload: List[str], shots: int, backend_manager: BackendInterface,
+                     initial_state: int = 0) -> Optional[Dict[str, Any]]:
+
+    # ──────────────────────────────────────────────────────────
+    # SEED INITIALIZATION - For global reproducibility
+    # ──────────────────────────────────────────────────────────
+    random.seed(42)
+    np.random.seed(42)
+    
+    print("\n" + "=" * 70)
+    state_label = "|1⟩" if initial_state == 1 else "|0⟩"
+    print(f"SQM Flow Compiler - Dual-Register Memory with Quantum Teleportation")
+    print(f"Target state: {state_label}")
+    print(f"Fidelity measured on: OPERATION REGISTER (q_work)")
+    print("=" * 70)
+
+    # Create compiler with optional backend manager (Dependency Injection)
+    sqm = SQMFlowCompiler(R=R, n=n, c_max=c_max, t_max_ns=t_max_ns, 
+                      backend_manager=backend_manager, initial_state=initial_state)
+
+    # Display workload
+    print(f"\n[Workload] Executing {len(workload)} instructions:")
+    for i, instr in enumerate(workload, 1):
+        print(f"  {i}. {instr}")
+
+    # Compile workload
+    circuit = sqm.compile_workload(workload)
+
+    print(f"\n[Circuit Metrics]")
+    print(f"  Qubits: {circuit.num_qubits}")
+    print(f"  Classical bits: {circuit.num_clbits}")
+    print(f"  Depth: {circuit.depth()}")
+    print(f"  Size: {circuit.size()}")
+
+    state = sqm.get_compiler_state()
+    print(f"\n[Compiler State]")
+    print(f"  Available physical qubits: {state['available_qubits']}")
+
+    print("\n" + "-" * 70)
+    print("SIMULATION PHASE (FLOW - Operation Register)")
+    print("-" * 70)
+
+    try:
+        results = sqm.execute(circuit, shots=shots)
+        
+        print(f"\n[SQM Flow Results]")
+        print(f"  Fidelity: {results['fidelity']:.4f}")
+        print(f"  Total Shots: {results['total_shots']}")
+        print(f"  Top 5 outcomes:")
+        for state_str, count in list(results['counts'].items())[:5]:
+            print(f"    |{state_str}⟩: {count} shots")
+
+        results['qubit_mapper'] = sqm.qubit_mapper
+        return results
+
+    except Exception as e:
+        print(f"[Error] SQM Flow execution failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+
+
+def run_swap_flow_compiler(R: int, n: int, c_max: int, t_max_ns: float,
+                     workload: List[str], shots: int, backend_manager: BackendInterface,
+                     initial_state: int = 0) -> Optional[Dict[str, Any]]:
+
+    # ──────────────────────────────────────────────────────────
+    # SEED INITIALIZATION - For global reproducibility
+    # ──────────────────────────────────────────────────────────
+    random.seed(42)
+    np.random.seed(42)
+    
+    print("\n" + "=" * 70)
+    state_label = "|1⟩" if initial_state == 1 else "|0⟩"
+    print(f"SWAP Flow Compiler - Single-Register Memory (Baseline)")
+    print(f"Target state: {state_label}")
+    print(f"Fidelity measured on: OPERATION REGISTER (q_work)")
+    print("=" * 70)
+
+    # Create compiler with optional backend manager (Dependency Injection)
+    swap = SwapFlowCompiler(R=R, n=n, c_max=c_max, t_max_ns=t_max_ns, 
+                        backend_manager=backend_manager, initial_state=initial_state)
+
+    # Display workload
+    print(f"\n[Workload] Executing {len(workload)} instructions:")
+    for i, instr in enumerate(workload, 1):
+        print(f"  {i}. {instr}")
+
+    # Compile workload
+    circuit = swap.compile_workload(workload)
+
+    print(f"\n[Circuit Metrics]")
+    print(f"  Qubits: {circuit.num_qubits}")
+    print(f"  Classical bits: {circuit.num_clbits}")
+    print(f"  Depth: {circuit.depth()}")
+    print(f"  Size: {circuit.size()}")
+
+    state = swap.get_compiler_state()
+    print(f"\n[Compiler State]")
+    print(f"  Available physical qubits: {state['available_qubits']}")
+
+    print("\n" + "-" * 70)
+    print("SIMULATION PHASE (FLOW - Operation Register)")
+    print("-" * 70)
+
+    try:
+        results = swap.execute(circuit, shots=shots)
+        
+        print(f"\n[SWAP Flow Results]")
+        print(f"  Fidelity: {results['fidelity']:.4f}")
+        print(f"  Total Shots: {results['total_shots']}")
+        print(f"  Top 5 outcomes:")
+        for state_str, count in list(results['counts'].items())[:5]:
+            print(f"    |{state_str}⟩: {count} shots")
+
+        results['qubit_mapper'] = swap.qubit_mapper
+        return results
+
+    except Exception as e:
+        print(f"[Error] SWAP Flow execution failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # Comparative Analysis Function
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -177,13 +309,16 @@ def analyze_workload(R: int, n: int, c_max: int, t_max_ns: float,
     print("█" + " " * 68 + "█")
     print("█" * 70)
 
-    # Run SQM with injected backend
-    sqm_results = run_sqm_compiler(R=R, n=n, c_max=c_max, t_max_ns=t_max_ns,
-                                     workload=workload, shots=shots, initial_state=initial_state,
-                                     backend_manager=backend_manager)
+
 
     # Run SWAP with injected backend
     swap_results = run_swap_compiler(R=R, n=n, c_max=c_max, t_max_ns=t_max_ns,
+                                     workload=workload, shots=shots, initial_state=initial_state,
+                                     backend_manager=backend_manager)
+    
+
+    # Run SQM with injected backend
+    sqm_results = run_sqm_compiler(R=R, n=n, c_max=c_max, t_max_ns=t_max_ns,
                                      workload=workload, shots=shots, initial_state=initial_state,
                                      backend_manager=backend_manager)
 
@@ -216,6 +351,77 @@ def analyze_workload(R: int, n: int, c_max: int, t_max_ns: float,
 
         return {
             'workload_name': workload_name,
+            'workload_tasks': workload,
+            'sqm': sqm_results,
+            'swap': swap_results,
+            'comparison': {
+                'sqm_fidelity': sqm_fidelity,
+                'swap_fidelity': swap_fidelity,
+                'difference': difference,
+                'percent_diff': percent_diff,
+                'sqm_qubits': sqm_qubits,
+                'swap_qubits': swap_qubits,
+            }
+        }
+    else:
+        print("[Error] Could not complete comparative analysis due to simulation failures")
+        return None
+
+
+def analyze_workload_flow(R: int, n: int, c_max: int, t_max_ns: float,
+                    workload_name: str, workload: List[str], shots: int, backend_manager: BackendInterface,
+                    initial_state: int = 0) -> Optional[Dict[str, Any]]:
+    """Flow variant of analyze_workload: measures fidelity on operation register."""
+
+    print("\n" + "█" * 70)
+    print("█" + " " * 68 + "█")
+    state_label = "|1⟩" if initial_state == 1 else "|0⟩"
+    print("█" + f"  {workload_name} — Target: {state_label} — FLOW (op_register)".center(68) + "█")
+    print("█" + " " * 68 + "█")
+    print("█" * 70)
+
+
+
+    # Run SWAP Flow with injected backend
+    swap_results = run_swap_flow_compiler(R=R, n=n, c_max=c_max, t_max_ns=t_max_ns,
+                                     workload=workload, shots=shots, initial_state=initial_state,
+                                     backend_manager=backend_manager)
+    
+
+    # Run SQM Flow with injected backend
+    sqm_results = run_sqm_flow_compiler(R=R, n=n, c_max=c_max, t_max_ns=t_max_ns,
+                                     workload=workload, shots=shots, initial_state=initial_state,
+                                     backend_manager=backend_manager)
+
+    # Comparative Analysis
+    print("\n" + "=" * 70)
+    print("COMPARATIVE ANALYSIS SUMMARY (FLOW - Operation Register)")
+    print("=" * 70)
+
+    if sqm_results and swap_results:
+        sqm_fidelity = sqm_results['fidelity']
+        swap_fidelity = swap_results['fidelity']
+        sqm_qubits = sqm_results.get('qubits', 'N/A')
+        swap_qubits = swap_results.get('qubits', 'N/A')
+        difference = sqm_fidelity - swap_fidelity
+        percent_diff = (difference / swap_fidelity * 100) if swap_fidelity > 0 else 0
+
+        print(f"\n[Fidelity Comparison - FLOW]")
+        print(f"  SQM:  {sqm_fidelity:.4f} ({sqm_fidelity*100:.2f}%)")
+        print(f"  SWAP:  {swap_fidelity:.4f} ({swap_fidelity*100:.2f}%)")
+        print(f"  Δ:     {difference:+.4f} ({percent_diff:+.2f}%)")
+
+        behavior = "✓ BETTER" if difference > 0 else "✗ WORSE" if difference < 0 else "= EQUAL"
+        print(f"  → SQM is {behavior} than SWAP")
+
+        print(f"\n[Architecture Comparison]")
+        print(f"  SQM Memory:  Dual-register (Original + Backup)")
+        print(f"  SWAP Memory:  Single-register (Baseline)")
+        print(f"  Measurement:  FLOW (operation register - q_work)")
+
+        return {
+            'workload_name': workload_name,
+            'workload_tasks': workload,
             'sqm': sqm_results,
             'swap': swap_results,
             'comparison': {
@@ -238,18 +444,28 @@ def analyze_workload(R: int, n: int, c_max: int, t_max_ns: float,
 
 def run_full_comparison(R: int, n: int, c_max: int, t_max_ns: float,
                        shots: int, workloads: List[Tuple[str, List[str]]], backend_manager: BackendInterface,
-                       initial_state: int = 0) -> None:
+                       initial_state: int = 0, flow: int = 0) -> None:
     
     # Summary tracking
     results = []
     qubit_mapping_visualized = False
     
     # Run comparative analysis for each workload
+    # Select analyzer based on flow parameter
+    flow_label = "FLOW (operation register)" if flow == 1 else "MEMORY (memory registers)"
+    print(f"\n[Comparison Mode] {flow_label}")
+
     for idx, (workload_name, workload) in enumerate(workloads):
-        result = analyze_workload(R=R, n=n, c_max=c_max, t_max_ns=t_max_ns,
-                                 workload_name=workload_name, 
-                                 workload=workload, shots=shots, initial_state=initial_state,
-                                 backend_manager=backend_manager)
+        if flow == 1:
+            result = analyze_workload_flow(R=R, n=n, c_max=c_max, t_max_ns=t_max_ns,
+                                     workload_name=workload_name, 
+                                     workload=workload, shots=shots, initial_state=initial_state,
+                                     backend_manager=backend_manager)
+        else:
+            result = analyze_workload(R=R, n=n, c_max=c_max, t_max_ns=t_max_ns,
+                                     workload_name=workload_name, 
+                                     workload=workload, shots=shots, initial_state=initial_state,
+                                     backend_manager=backend_manager)
         if result:
             results.append(result)
             
@@ -332,6 +548,7 @@ def run_full_comparison(R: int, n: int, c_max: int, t_max_ns: float,
             csv_data.append({
                 'Run': i,
                 'Workload': result['workload_name'],
+                'Tasks': ' -> '.join(result.get('workload_tasks', [])),
                 'SQM_Fidelity': result['comparison']['sqm_fidelity'],
                 'SWAP_Fidelity': result['comparison']['swap_fidelity'],
                 'Difference': result['comparison']['difference'],
@@ -345,8 +562,9 @@ def run_full_comparison(R: int, n: int, c_max: int, t_max_ns: float,
         x_pos = np.arange(len(workload_names))
         width = 0.35
         
-        bars1 = ax.bar(x_pos - width/2, sqm_fidelities, width, label='SQM', color='#2E86AB', alpha=0.8)
-        bars2 = ax.bar(x_pos + width/2, swap_fidelities, width, label='SWAP', color='#A23B72', alpha=0.8)
+        bars1 = ax.bar(x_pos - width/2, swap_fidelities, width, label='SWAP', color='#A23B72', alpha=0.8)
+       
+        bars2 = ax.bar(x_pos + width/2, sqm_fidelities, width, label='SQM', color='#06A77D', alpha=0.8)
         
         ax.set_xlabel('Workload', fontsize=12, fontweight='bold')
         ax.set_ylabel('Fidelity', fontsize=12, fontweight='bold')
@@ -397,7 +615,7 @@ def run_full_comparison(R: int, n: int, c_max: int, t_max_ns: float,
             
             # Data table header
             writer.writerow(['DETAILED RESULTS'])
-            fieldnames = ['Run', 'Workload', 'SQM_Fidelity', 'SWAP_Fidelity', 
+            fieldnames = ['Run', 'Workload', 'Tasks', 'SQM_Fidelity', 'SWAP_Fidelity', 
                          'Difference', 'Percent_Diff', 'SQM_Qubits', 'SWAP_Qubits']
             writer.writerow(fieldnames)
             
@@ -406,6 +624,7 @@ def run_full_comparison(R: int, n: int, c_max: int, t_max_ns: float,
                 writer.writerow([
                     row['Run'],
                     row['Workload'],
+                    row['Tasks'],
                     row['SQM_Fidelity'],
                     row['SWAP_Fidelity'],
                     row['Difference'],
@@ -463,7 +682,8 @@ def run_real_comparison(R: int, n: int, c_max: int, t_max_ns: float,
                        shots: int, workload: List[str],
                        backend_manager: BackendInterface,
                        initial_state: int = 0,
-                       scenarios: List[int] | None = None) -> Optional[Dict[str, Any]]:
+                       scenarios: List[int] | None = None,
+                       flow: int = 0) -> Optional[Dict[str, Any]]:
     """
     Execute multi-scenario experiment on real IBM Quantum hardware.
 
@@ -491,6 +711,8 @@ def run_real_comparison(R: int, n: int, c_max: int, t_max_ns: float,
     print(f"  Shots: {shots}")
     state_label = "|1>" if initial_state == 1 else "|0>"
     print(f"  Target state: {state_label}")
+    flow_label = "FLOW (operation register)" if flow == 1 else "MEMORY (memory registers)"
+    print(f"  Measurement mode: {flow_label}")
     print(f"  Scenarios: {scenarios}")
 
     results: Dict[str, Any] = {
@@ -517,8 +739,12 @@ def run_real_comparison(R: int, n: int, c_max: int, t_max_ns: float,
         print("Hypothesis: Lowest fidelity (baseline for comparison)")
 
         try:
-            swap = SwapCompiler(R=R, n=n, c_max=c_max, t_max_ns=t_max_ns,
-                               backend_manager=backend_manager, initial_state=initial_state)
+            if flow == 1:
+                swap = SwapFlowCompiler(R=R, n=n, c_max=c_max, t_max_ns=t_max_ns,
+                                   backend_manager=backend_manager, initial_state=initial_state)
+            else:
+                swap = SwapCompiler(R=R, n=n, c_max=c_max, t_max_ns=t_max_ns,
+                                   backend_manager=backend_manager, initial_state=initial_state)
 
             circuit_swap = swap.compile_workload(workload)
             print(f"\n[Circuit Generated]")
@@ -561,8 +787,12 @@ def run_real_comparison(R: int, n: int, c_max: int, t_max_ns: float,
         print("Hypothesis: SQM fidelity > SWAP baseline (validates thesis)")
 
         try:
-            sqm_real = SQMCompiler(R=R, n=n, c_max=c_max, t_max_ns=t_max_ns,
-                                  backend_manager=backend_manager, initial_state=initial_state)
+            if flow == 1:
+                sqm_real = SQMFlowCompiler(R=R, n=n, c_max=c_max, t_max_ns=t_max_ns,
+                                      backend_manager=backend_manager, initial_state=initial_state)
+            else:
+                sqm_real = SQMCompiler(R=R, n=n, c_max=c_max, t_max_ns=t_max_ns,
+                                      backend_manager=backend_manager, initial_state=initial_state)
 
             filtered = [w for w in workload if not w.startswith("IDLE_5")]
             circuit_sqm_real = sqm_real.compile_workload(filtered       )
@@ -608,8 +838,12 @@ def run_real_comparison(R: int, n: int, c_max: int, t_max_ns: float,
         print("Hypothesis: SQM fidelity > SWAP baseline (validates thesis)")
 
         try:
-            sqm_real = SQMCompiler(R=R, n=n, c_max=c_max, t_max_ns=t_max_ns,
-                                  backend_manager=backend_manager, initial_state=initial_state)
+            if flow == 1:
+                sqm_real = SQMFlowCompiler(R=R, n=n, c_max=c_max, t_max_ns=t_max_ns,
+                                      backend_manager=backend_manager, initial_state=initial_state)
+            else:
+                sqm_real = SQMCompiler(R=R, n=n, c_max=c_max, t_max_ns=t_max_ns,
+                                      backend_manager=backend_manager, initial_state=initial_state)
 
             circuit_sqm_real = sqm_real.compile_workload(workload)
             print(f"\n[Circuit Generated]")
