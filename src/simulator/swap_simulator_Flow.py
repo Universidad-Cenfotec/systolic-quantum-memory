@@ -101,7 +101,8 @@ class SwapFlowCompiler:
         # Cache for built registers (to avoid rebuilding)
         self._built_registers: Dict[str, QuantumRegister] = {}
 
-        state_label = "|0>" if initial_state == 0 else "|1>"
+        _state_labels = {0: "|0>", 1: "|1>", 2: "|+> (H)", 3: "|-> (XH)"}
+        state_label = _state_labels.get(initial_state, f"unknown({initial_state})")
         print(f"[Swap Flow Compiler] Initialized: R={R}, n={n}, c_max={c_max}, t_max={t_max_ns} ns")
         print(f"[Swap Flow Compiler] Fidelity target state: {state_label}")
         print(f"[Swap Flow Compiler] Fidelity measured on: OPERATION REGISTER (q_work)")
@@ -209,25 +210,26 @@ class SwapFlowCompiler:
         # ----------------------------------------------------------
         
         if self.initial_state == 1:
-            print("\n[Compilation] Preparing initial state |1...1> (applying X to all qubits: memory + operation register)...")
-            # Apply X gates to ALL qubits (memory and operation register) to prepare |1...1> state
-            # This ensures SWAPs don't affect the final state validation
-            
-            # Apply X to operation register
+            print("\n[Compilation] Preparing initial state |1...1> (applying X to q_work)...")
             for qubit in qr_work:
                 qc.x(qubit)
-            """
-            # Apply X to all memory qubits
-            for i in range(self.R):
-                qr_mem = self._built_registers[f"mem_{i}"]
-                # Apply X to memory
-                for qubit in qr_mem:
-                    qc.x(qubit)
-            """
             qc.barrier()
-            print("[Compilation] Initial state |1...1> prepared for all qubits")
+            print("[Compilation] Initial state |1...1> prepared for operation register")
+        elif self.initial_state == 2:
+            print("\n[Compilation] Preparing initial state |+> (applying H to q_work)...")
+            for qubit in qr_work:
+                qc.h(qubit)
+            qc.barrier()
+            print("[Compilation] Initial state |+> prepared for operation register")
+        elif self.initial_state == 3:
+            print("\n[Compilation] Preparing initial state |-> (applying X+H to q_work)...")
+            for qubit in qr_work:
+                qc.x(qubit)
+                qc.h(qubit)
+            qc.barrier()
+            print("[Compilation] Initial state |-> prepared for operation register")
         else:
-            print("\n[Compilation] Using default initial state |0...0> (no X gates applied)")
+            print("\n[Compilation] Using default initial state |0...0> (no gates applied)")
 
         # ----------------------------------------------------------
         # Phase 1: Process workload instructions
@@ -287,6 +289,19 @@ class SwapFlowCompiler:
                 dest_reg = self._built_registers[f"mem_{logical_addr}"]
                 qc = self.work_phase.apply_swap(qc, qr_work, dest_reg)
 
+            elif instruction.startswith("WORKING_"):
+                # WORKING instruction: WORKING_# where # is number of X-gate pairs
+                # Each pair is 2 X gates, so WORKING_1 = 2X, WORKING_3 = 6X
+                num_pairs = int(instruction.split("_")[1])
+                num_x_gates = 2 * num_pairs
+                
+                print(f"    -> WORKING phase: Applying {num_x_gates} X gates to q_work ({num_pairs} pairs)")
+                
+                # Apply X gates to all qubits in work register
+                for _ in range(num_x_gates):
+                    for qubit in qr_work:
+                        qc.x(qubit)
+
             else:
                 print(f"  [WARNING] Unknown instruction: {instruction}")
             qc.barrier()  # Prevent inter-SWAP optimization
@@ -339,8 +354,15 @@ class SwapFlowCompiler:
             cr_final = ClassicalRegister(self.n, name="final_meas")
             qc_measured.add_register(cr_final)
 
-            # Measure the operation register (q_work)
+            # For superposition states (2, 3): apply H before measurement
+            # to rotate back to computational basis
             qr_work = self._built_registers["q_work"]
+            if self.initial_state in (2, 3):
+                print("[Execution] Applying H before measurement (superposition decode)")
+                for qubit in qr_work:
+                    qc_measured.h(qubit)
+
+            # Measure the operation register (q_work)
             for i in range(self.n):
                 qc_measured.measure(qr_work[i], cr_final[i])
 
@@ -366,10 +388,12 @@ class SwapFlowCompiler:
             
             # ──────────────────────────────────────────────────────
             # FLOW: Compare against target state for n qubits only
+            # States 0, 2 -> target '0'*n
+            # States 1, 3 -> target '1'*n (state 3: XH init + H measure = |1>)
             # ──────────────────────────────────────────────────────
             fidelity_count = 0
             target_state_bits = self.n  # Only n qubits (operation register)
-            target_state = ('1' * target_state_bits) if self.initial_state == 1 else ('0' * target_state_bits)
+            target_state = ('1' * target_state_bits) if self.initial_state in (1, 3) else ('0' * target_state_bits)
             
             for outcome, count in counts.items():
                 measured_bits = self._parse_measurement_outcome(outcome)
@@ -384,7 +408,8 @@ class SwapFlowCompiler:
             print(f"  Depth: {qc_transpiled.depth()}")
             print(f"  Size: {qc_transpiled.size()}")
             
-            state_label = "|1...1>" if self.initial_state == 1 else "|0...0>"
+            _state_labels = {0: "|0...0>", 1: "|1...1>", 2: "|+> (H->|0>)", 3: "|-> (XH->|1>)"}
+            state_label = _state_labels.get(self.initial_state, "|0...0>")
             print(f"  Fidelity FLOW ({state_label} success for {self.n} qubits in operation register): {fidelity:.4f}")
             
             # Show top outcomes

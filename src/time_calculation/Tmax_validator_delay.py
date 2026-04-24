@@ -405,7 +405,7 @@ class TmaxValidatorDelay:
 if __name__ == "__main__":
 
     # 1. DEFINE THE ARCHITECTURE (N = Word width)
-    N_qubits = 1
+    N_qubits = 2
     target_fidelity = 0.75
 
     validator = TmaxValidatorDelay(N=N_qubits)

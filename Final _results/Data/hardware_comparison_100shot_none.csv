@@ -1,4 +1,0 @@
-Scenario,Configuration,Fidelity,Job_ID,Notes
-1,SWAP Compiler (Baseline),0.7500,N/A,"Static decoherence, no refresh"
-2,SQM (No Delay - Routing Only),0.9500,N/A,"time_idle_ns=0, measures routing overhead"
-3,SQM (Real Timing - Calibrated),0.8300,N/A,Backend-calibrated timing (1350 ns)
