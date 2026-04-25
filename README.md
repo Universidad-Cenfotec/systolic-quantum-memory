@@ -2,7 +2,7 @@
 
 **Authors:** Danny Valerio-Ramírez (CENFOTEC) · Santiago Núñez-Corrales (UIUC)
 
-Quantum memory architecture based on systolic teleportation to mitigate decoherence in the NISQ era. Includes comparative analysis with SWAP-based baseline.
+Quantum memory architecture based on systolic teleportation to mitigate decoherence in the NISQ era. Includes comparative analysis with SWAP-based baseline, randomized benchmarking (RB) characterization, and real IBM Quantum hardware experiments.
 
 ---
 
@@ -10,47 +10,67 @@ Quantum memory architecture based on systolic teleportation to mitigate decohere
 
 ```
 SQM/
-├── src/                       # Source code (compilers & quantum circuits)
+├── src/                                    # Source code
 │   ├── __init__.py
-│   ├── comparison.py                     # Comparative analysis (SQM vs SWAP)
-│   ├── modular_circuits/                 # Core circuit components
+│   ├── comparison.py                       # Comparative analysis (SQM vs SWAP, simulation & hardware)
+│   ├── backends/                           # Backend abstraction layer (DI pattern)
 │   │   ├── __init__.py
-│   │   ├── qpc.py                        # BipartiteQPC (memory register abstraction)
-│   │   ├── memory_register.py            # StorageRegister (passive memory)
-│   │   └── operation_register.py         # OperationRegister (active CPU)
-│   ├── functions/                        # Quantum algorithms & operations
+│   │   ├── backend_interface.py            # Abstract interface (BackendInterface)
+│   │   ├── aer_simulator_backend.py        # Local noisy simulation (AerSimulatorBackend)
+│   │   └── ibm_hardware_backend.py         # Real IBM Quantum hardware (IBMHardwareBackend)
+│   ├── modular_circuits/                   # Core circuit components
 │   │   ├── __init__.py
-│   │   ├── qubit_mapper.py               # Hardware-aware qubit allocation
-│   │   ├── teleportation.py              # SystolicTeleportation (3-parallel bus)
-│   │   ├── work_phase.py                 # SystolicWorkPhase (NISQ SWAP)
-│   ├── simulator/                        # Noisy quantum simulators
+│   │   ├── qpc.py                          # QPC odometer (hybrid desgaste tracker)
+│   │   ├── memory_register.py              # StorageRegister (passive memory)
+│   │   └── operation_register.py           # OperationRegister (active CPU)
+│   ├── functions/                          # Quantum algorithms & operations
 │   │   ├── __init__.py
-│   │   ├── sqm_simulator.py              # SQMCompiler (dual-register memory)
-│   │   └── swap_simulator.py             # SwapCompiler (single-register baseline)
-│   └── time_calculation/                 # Performance metrics & validation
+│   │   ├── qubit_mapper.py                 # Hardware-aware qubit allocation (chain topology)
+│   │   ├── teleportation.py                # SystolicTeleportation (3-parallel bus)
+│   │   └── work_phase.py                   # SystolicWorkPhase (NISQ SWAP)
+│   ├── simulator/                          # Quantum compilers & simulators
+│   │   ├── __init__.py
+│   │   ├── sqm_simulator.py               # SQMCompiler (fidelity on memory registers)
+│   │   ├── sqm_simulator_Flow.py           # SQMFlowCompiler (fidelity on operation register)
+│   │   ├── swap_simulator.py               # SwapCompiler (fidelity on memory registers)
+│   │   └── swap_simulator_Flow.py          # SwapFlowCompiler (fidelity on operation register)
+│   ├── time_calculation/                   # RB characterization & threshold validators
+│   │   ├── __init__.py
+│   │   ├── ibm_backend_helper.py           # Shared IBM backend + SamplerV2 utilities
+│   │   ├── tmax_calculator.py              # Passive desgaste threshold (analytical)
+│   │   ├── Tmax_validator_delay.py         # Passive desgaste via native delay() instructions
+│   │   ├── tmax_validator_Id.py            # Passive desgaste via identity gates + thermal noise
+│   │   ├── cmax_validator_sqm.py           # Active desgaste (SQM + SystolicTeleportation)
+│   │   ├── cmax_validator_swap.py          # Active desgaste (SWAP pairs)
+│   │   ├── cmax_validator_teleport.py      # Active desgaste (teleportation only, ping-pong)
+│   │   └── cmax_validator_not.py           # Active desgaste (NOT gate pairs)
+│   └── utils/                              # Shared utility modules
 │       ├── __init__.py
-│       ├── tmax_calculator.py            # Passive desgaste threshold
-│       ├── cmax_validator.py             # Active desgaste (SQM) - DEPRECATED
-│       ├── cmax_validator_sqm.py         # Active desgaste (SQM + SystolicTeleportation)
-│       └── cmax_validator_swap.py        # Active desgaste (SWAP)
-├── tests/                                # Test suite
+│       ├── measurement_parser.py           # MeasurementParser (endianness-aware bit extraction)
+│       └── hardware_results_processor.py   # CSV/PNG export for hardware experiments
+├── tests/                                  # Test suite
 │   ├── __init__.py
-│   ├── qpc_test.py                       # BipartiteQPC validation
-│   ├── teleportation_test.py             # End-to-end teleportation
-│   └── work_phase_test.py                # Work phase simulation
-├── Contexto/                             # Documentation & research
-│   ├── SQM_Paper.md
-│   ├── Systolic_Quantum_Teleportation_Memory.txt
-│   └── Literatura/
-├── data/                                 # Calibration data
-├── results/                              # Simulation outputs
-├── test_results/                         # Test execution results
-├── .vscode/                              # VS Code configuration
-├── .venv/                                # Python 3.11 virtual environment
-├── pyrightconfig.json
-├── requirements.txt
-├── main.py                               # Entry point (parameter configuration)
-└── README.md                             # This file
+│   ├── qpc_test.py                         # BipartiteQPC validation
+│   ├── teleportation_test.py               # End-to-end teleportation
+│   ├── work_phase_test.py                  # Work phase simulation
+│   ├── simulator_integration_test.py       # SQM/SWAP compiler integration
+│   ├── cmax_validator_integration_test.py  # CMax validator integration
+│   ├── swap_validator_integration_test.py  # SWAP validator integration
+│   ├── measurement_parser_test.py          # MeasurementParser unit tests
+│   └── Test_IBMHardwareBackend.py          # IBM hardware backend connectivity test
+├── context/                                # Documentation & research context
+│   ├── context.md                          # Full research context document
+│   ├── Api.txt                             # IBM Quantum API token reference
+│   └── setup_token.py                      # IBM credential setup helper
+├── data/                                   # Experiment output data (CSV)
+├── results/                                # Simulation graphs (PNG)
+├── results_Article/                        # Published article results (CSV + PNG)
+├── main.py                                 # Entry point: local simulation (AerSimulator)
+├── main_hardware_experiment.py             # Entry point: IBM Quantum hardware experiment
+├── requirements.txt                        # Python dependencies
+├── pyrightconfig.json                      # Type checker configuration
+├── LICENSE                                 # Open-source license
+└── README.md                               # This file
 ```
 
 ---
@@ -59,12 +79,13 @@ SQM/
 
 | Package | Version | Purpose |
 |---------|---------|---------|
-| `qiskit` | 1.4.2 | Core SDK: circuits, transpiler, primitives |
-| `qiskit-aer` | 0.15.1 | High-performance noisy simulation (T1/T2) |
-| `qiskit-ibm-runtime` | 0.34.0 | IBM backend access & calibration data |
+| `qiskit` | ≥ 1.3.0 | Core SDK: circuits, transpiler, primitives |
+| `qiskit-aer` | ≥ 0.14.0 | High-performance noisy simulation (T1/T2) |
+| `qiskit-ibm-runtime` | 0.46.1 | IBM backend access & SamplerV2 primitives |
 | `numpy` | 1.26.4 | N-dimensional arrays & linear algebra |
-| `scipy` | 1.13.1 | Advanced math: linalg, stats, optimize |
-| `matplotlib` | 3.9.2 | Plots, histograms, fidelity curves |
+| `scipy` | 1.13.1 | Advanced math: curve fitting, optimization |
+| `networkx` | 3.3 | Graph algorithms & circuit topology analysis |
+| `matplotlib` | 3.9.2 | Plots, histograms, fidelity decay curves |
 | `pylatexenc` | 2.10 | LaTeX-style circuit rendering in Qiskit |
 
 ---
@@ -83,85 +104,207 @@ python.exe -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-### 3. Run Comparative Analysis
+### 3. Configure IBM Quantum Credentials (for hardware experiments)
+```python
+from qiskit_ibm_runtime import QiskitRuntimeService
+QiskitRuntimeService.save_account(
+    channel='ibm_quantum_platform',
+    token='YOUR_IBM_QUANTUM_TOKEN'
+)
+```
 
-**Full SQM ↔ SWAP comparison:**
+### 4. Run Local Comparative Analysis
 ```powershell
 python main.py
 ```
 
-**What it does:**
-- Loads workload definitions and compiler parameters
-- Runs SQM Compiler (dual-register memory with teleportation)
-- Runs SWAP Compiler (single-register baseline)
-- Compares fidelity, gate cost, resource usage
-- Outputs results to console
+### 5. Run Hardware Experiment (IBM Quantum)
+```powershell
+python main_hardware_experiment.py
+```
 
-**Configuration (edit main.py):**
+---
+
+## Entry Points
+
+### `main.py` — Local Simulation
+
+Executes SQM ↔ SWAP comparative analysis using the AerSimulator backend with a FakeKyiv noise model.
+
+**Configuration parameters (edit `main.py`):**
 ```python
 # Compiler parameters
-R = 2          # Number of logical memory registers
-n = 2          # Qubits per register
-c_max = 100    # Gate cost threshold
-t_max_ns = 50000  # Time threshold (nanoseconds)
-shots = 256    # Simulation shots per workload
+R = 1              # Number of logical memory registers
+n = 1              # Qubits per register (quantum word width)
+c_max = 10         # Gate cost threshold
+t_max_ns = 1350    # Time threshold (nanoseconds)
+shots = 4000       # Simulation shots per workload
+flow = 1           # 0 = measure memory registers, 1 = measure operation register
 
-# Workload definitions (list of READ/WRITE/IDLE instructions)
-workload1 = ["WRITE", "READ", "WRITE", "READ"]
-workload2 = ["WRITE", "READ", "WRITE", "READ", "READ", "IDLE"]
+# Backend thermal parameters (custom mode)
+backend_mode = "custom"   # "default" or "custom"
+t1_ns = 149149            # T1 relaxation time (ns)
+t2_ns = 38194             # T2 dephasing time (ns)
+idle_time_ns = 1000       # Idle period duration (ns)
+
+# Quantum state configuration
+initial_state = 3  # 0 = |0⟩, 1 = |1⟩, 2 = |+⟩ (H), 3 = |−⟩ (XH)
+
+# Workloads with parametric IDLE durations
+workload1 = ["WRITE_0", "IDLE_10", "READ_0"]
+workload2 = ["WRITE_0", "IDLE_20", "READ_0"]
+# ... up to workload14
 ```
 
-### 4. Run Individual Tests
+**What it does:**
+- Creates an `AerSimulatorBackend` with configurable thermal parameters
+- Runs SQM and SWAP compilers for each workload
+- Generates fidelity comparison graphs (`results/`) and CSV data (`data/`)
+- Supports both memory-register and operation-register fidelity measurement
 
-#### **Teleportation Test**
-```powershell
-python tests/teleportation_test.py
-```
-Tests the systolic teleportation bus with Bell state preparation.
+---
 
-#### **Work Phase Test**
-```powershell
-python tests/work_phase_test.py
-```
-Tests the NISQ-level SWAP decomposition with asymmetric states.
+### `main_hardware_experiment.py` — IBM Quantum Hardware
 
-#### **BipartiteQPC Test**
-```powershell
-python tests/qpc_test.py
+Executes multi-scenario, multi-workload experiments on real IBM Quantum hardware.
+
+**Scenarios:**
+| Scenario | Configuration | Purpose |
+|----------|---------------|---------|
+| **1** | SWAP Compiler (baseline) | Static decoherence, no refresh |
+| **2** | SQM without delay | Routing overhead only (time_idle_ns=0) |
+| **3** | SQM with real timing | Backend-calibrated decoherence |
+
+**Configuration:**
+```python
+# Hardware execution
+shots = 1000       # Keep low to preserve IBM quota
+flow = 1           # 0 = memory registers, 1 = operation register
+initial_state = 3  # 0 = |0⟩, 1 = |1⟩, 2 = |+⟩, 3 = |−⟩
+
+# Scenario selection
+scenario = [1, 3]  # Run specific scenarios (or [1, 2, 3] for all)
 ```
-Validates the quantum processor component abstraction.
+
+**Output:**
+- Multi-workload CSV results → `data/hardware_comparison_multi_*.csv`
+- Multi-workload comparison graph → `results/hardware_comparison_multi_graph_*.png`
 
 ---
 
 ## Module Reference
 
-### Core Simulators
+### Backend Abstraction Layer (`src/backends/`)
 
 | Module | Class | Purpose |
 |--------|-------|---------|
-| `sqm_simulator.py` | `SQMCompiler` | Dual-register + teleportation + noise |
-| `swap_simulator.py` | `SwapCompiler` | Single-register baseline + SWAP gates |
-| `comparison.py` | `run_full_comparison()` | Orchestrate SQM ↔ SWAP analysis |
+| `backend_interface.py` | `BackendInterface` | Abstract interface: `run()`, `time_idle_ns`, `use_native_delay` |
+| `aer_simulator_backend.py` | `AerSimulatorBackend` | Local FakeKyiv + thermal relaxation noise model |
+| `ibm_hardware_backend.py` | `IBMHardwareBackend` | Real IBM Quantum via SamplerV2 + dynamic calibration |
 
-### Hardware Mapping
+The backend layer uses **dependency injection**: backends are created in `main.py` / `main_hardware_experiment.py` and passed to compilers and comparison functions. This decouples circuit compilation from execution.
 
-| Module | Class | Purpose |
-|--------|-------|---------|
-| `qubit_mapper.py` | `QubitMapper` | FakeKyiv backend + chain topology allocation |
-| `cmax_validator.py` | `CmaxValidator` | Active desgaste threshold (SQM) - DEPRECATED |
-| `cmax_validator_sqm.py` | `CMaxValidator` | Active desgaste (SQM + SystolicTeleportation with active reset) |
-| `cmax_validator_swap.py` | `CmaxValidatorSwap` | Active desgaste threshold (SWAP) |
-| `tmax_calculator.py` | `TmaxCalculator` | Passive desgaste from T1/T2 times |
+**Key features:**
+- `AerSimulatorBackend`: Configurable T1/T2/idle noise, `id()` gate for idle periods
+- `IBMHardwareBackend`: Native `delay()` instructions, immutable `time_idle_ns` after calibration, `MockResult`/`MockJob` wrappers for SamplerV2 → V1 compatibility
 
-### Quantum Circuits
+---
+
+### Compilers & Simulators (`src/simulator/`)
+
+| Module | Class | Fidelity Target | Description |
+|--------|-------|-----------------|-------------|
+| `sqm_simulator.py` | `SQMCompiler` | Memory registers | Dual-register + teleportation + QPC odometer |
+| `sqm_simulator_Flow.py` | `SQMFlowCompiler` | Operation register | Same compilation, fidelity on `q_work` |
+| `swap_simulator.py` | `SwapCompiler` | Memory registers | Single-register baseline + SWAP gates |
+| `swap_simulator_Flow.py` | `SwapFlowCompiler` | Operation register | Same compilation, fidelity on `q_work` |
+
+**Memory vs Flow modes:**
+- **Memory mode** (`flow=0`): Measures fidelity on the memory registers where data is stored at rest
+- **Flow mode** (`flow=1`): Measures fidelity on the operation register (`q_work`) — evaluates the quantum state "in transit"
+
+**Superposition state support:**
+| `initial_state` | State | Preparation | Measurement target |
+|-----------------|-------|-------------|--------------------|
+| 0 | \|0⟩ | None | `0…0` |
+| 1 | \|1⟩ | X gate | `1…1` |
+| 2 | \|+⟩ | H gate | `0…0` (after H decode) |
+| 3 | \|−⟩ | X + H gates | `1…1` (after H decode) |
+
+---
+
+### Workload Instruction Set
+
+| Instruction | Format | Description |
+|-------------|--------|-------------|
+| `WRITE_<addr>` | `WRITE_0` | SWAP data from `q_work` → memory register at address |
+| `READ_<addr>` | `READ_0` | SWAP data from memory register → `q_work` |
+| `IDLE_<units>` | `IDLE_100` | Apply `units × time_idle_ns` nanoseconds of decoherence |
+| `WORKING_<pairs>` | `WORKING_3` | Apply `2×pairs` X gates on `q_work` (computation phase) |
+
+Addresses are binary-encoded (e.g., `WRITE_0` = address 0, `READ_10` = address 2).
+
+---
+
+### Time Characterization & Validators (`src/time_calculation/`)
+
+Seven independent validators characterize fidelity decay using the **Magesan model** `F(m) = A·p^m + B` or **exponential decay** `F(t) = A·exp(−t/τ) + B`:
+
+| Validator | Protocol | Model | Gate Type | Output |
+|-----------|----------|-------|-----------|--------|
+| `cmax_validator_sqm.py` | SQM (SWAP + teleport) | Magesan | 2Q (ECR/CX) | C_MAX (cycles) |
+| `cmax_validator_swap.py` | SWAP pairs | Magesan | 2Q (ECR/CX) | C_MAX (SWAP pairs) |
+| `cmax_validator_teleport.py` | Teleportation only (ping-pong) | Magesan | 2Q (ECR/CX) | C_MAX (teleportations) |
+| `cmax_validator_not.py` | NOT gate pairs | Magesan | 1Q (X/SX/RZ) | C_MAX (NOT pairs) |
+| `Tmax_validator_delay.py` | Native `delay()` instruction | Exponential | — | T_MAX (nanoseconds) |
+| `tmax_validator_Id.py` | Identity gates + thermal noise | Magesan | id | T_MAX (ns via C_MAX × idle_time) |
+| `tmax_calculator.py` | Analytical (T1/T2 only) | Analytical | — | T_MAX (nanoseconds) |
+
+Each validator supports:
+- **FakeKyiv simulation** (default) or **real IBM hardware** (`backend_mode = "IBM"`)
+- Full RB characterization with `curve_fit`
+- Decay curve plots (PNG) and data export (CSV) to `results/` and `data/`
+- Extrapolation validation (model vs fresh measurement)
+- `ibm_backend_helper.py` provides shared `get_ibm_backend()` and `run_on_ibm()` for hardware execution
+
+---
+
+### Utility Modules (`src/utils/`)
+
+| Module | Class/Function | Purpose |
+|--------|----------------|---------|
+| `measurement_parser.py` | `MeasurementParser` | Endianness-aware bitstring extraction for multi-register outcomes |
+| `hardware_results_processor.py` | `save_hardware_comparison_results()` | Single-workload CSV + comparison graph |
+| `hardware_results_processor.py` | `save_hardware_multi_workload_results()` | Multi-workload aggregated CSV + grouped bar chart |
+
+**MeasurementParser features:**
+- `split_registers()` — Split outcome by spaces
+- `extract_register_bits()` — Extract bits using explicit layout dictionary
+- `build_register_layout_from_order()` — Build layout from circuit registration order (handles Qiskit little-endian)
+- `validate_layout()` — Verify layout consistency
+
+---
+
+### Quantum Circuit Components (`src/modular_circuits/`)
 
 | Module | Class | Purpose |
 |--------|-------|---------|
 | `memory_register.py` | `StorageRegister` | Passive memory qubits |
 | `operation_register.py` | `OperationRegister` | Active operation workspace |
-| `qpc.py` | `BipartiteQPC` | Quantum processor component abstraction |
-| `teleportation.py` | `SystolicTeleportation` | 3-parallel teleportation bus |
-| `work_phase.py` | `SystolicWorkPhase` | NISQ-level SWAP (3 CNOT/qubit) |
+| `qpc.py` | `QPC` | Quantum Processor Component — hybrid odometer for gate cost (`c_max`) and time-based (`t_max`) desgaste tracking |
+
+---
+
+### Comparison Module (`src/comparison.py`)
+
+Orchestrates all comparative analyses with four execution modes:
+
+| Function | Mode | Description |
+|----------|------|-------------|
+| `run_full_comparison()` | Local simulation | Multi-workload SQM ↔ SWAP comparison (graph + CSV) |
+| `run_real_comparison()` | IBM hardware | Multi-scenario experiment (1/2/3 scenarios, selectable) |
+| `analyze_workload()` | Memory fidelity | Single-workload comparison |
+| `analyze_workload_flow()` | Flow fidelity | Single-workload comparison (operation register) |
 
 ---
 
@@ -170,147 +313,132 @@ Validates the quantum processor component abstraction.
 ### SQM Compiler (Dual-Register Memory)
 
 ```
-Workload: [WRITE, READ, IDLE, ...] ──→ Parser
-                                          ↓
-                            QubitMapper (FakeKyiv)
-                                          ↓
-                    ┌─────────────────────────────────┐
-                    │ Chain Topology Allocation:      │
-                    │ OpReg → Mem_0 → Ancilla_0 →   │
-                    │ Mem_Backup_0 → Mem_1 → ...    │
-                    └─────────────────────────────────┘
-                                          ↓
-                    SystolicTeleportation (3-parallel)
-                    + SystolicWorkPhase (NISQ SWAP)
-                                          ↓
-                    FakeKyiv Backend (127 qubits)
-                    + T1/T2 Thermal Relaxation
-                                          ↓
-                          Fidelity Measurement
+Workload: [WRITE_0, IDLE_100, READ_0, ...] ──→ Parser
+                                                  ↓
+                                    QubitMapper (FakeKyiv / IBM Kingston)
+                                                  ↓
+                        ┌─────────────────────────────────────┐
+                        │ Chain Topology Allocation:          │
+                        │ q_work → mem_orig_0 → mem_backup_0 │
+                        │ → tele_ancilla_0 → mem_orig_1 → ...│
+                        └─────────────────────────────────────┘
+                                                  ↓
+                        QPC Odometer (c_max + t_max thresholds)
+                            → Triggers SystolicTeleportation
+                              when thresholds exceeded
+                                                  ↓
+                        Backend Manager (AerSimulator or IBM Hardware)
+                        + T1/T2 Thermal Relaxation (id or delay)
+                                                  ↓
+                              Fidelity Measurement
+                              (Memory or Operation register)
 ```
 
 ### SWAP Compiler (Baseline Comparison)
 
 ```
-Workload: [WRITE, READ, IDLE, ...] ──→ Parser
-                                          ↓
-                            QubitMapper (FakeKyiv)
-                                          ↓
-                    ┌─────────────────────────────────┐
-                    │ Chain Topology Allocation:      │
-                    │ OpReg → Mem_0 → Mem_1 →       │
-                    │ Mem_2 → ...                     │
-                    └─────────────────────────────────┘
-                                          ↓
-                    SystolicWorkPhase (NISQ SWAP only)
-                                          ↓
-                    FakeKyiv Backend (127 qubits)
-                    + T1/T2 Thermal Relaxation
-                                          ↓
-                          Fidelity Measurement
+Workload: [WRITE_0, IDLE_100, READ_0, ...] ──→ Parser
+                                                  ↓
+                                    QubitMapper (FakeKyiv / IBM Kingston)
+                                                  ↓
+                        ┌─────────────────────────────────────┐
+                        │ Chain Topology Allocation:          │
+                        │ q_work → mem_0 → mem_1 → ...       │
+                        └─────────────────────────────────────┘
+                                                  ↓
+                        SystolicWorkPhase (NISQ SWAP only)
+                        No teleportation, no refresh mechanism
+                                                  ↓
+                        Backend Manager (AerSimulator or IBM Hardware)
+                        + T1/T2 Thermal Relaxation (id or delay)
+                                                  ↓
+                              Fidelity Measurement
+                              (Memory or Operation register)
 ```
 
-### Key Difference
-- **SQM:** 2*R + 1 qubits (memory with backup + operation register)
-- **SWAP:** R + 1 qubits (simple baseline)
-- **Fair comparison:** Same noise model, backend, seed initialization
+### Key Differences
+
+| Feature | SQM | SWAP |
+|---------|-----|------|
+| Registers per address | 2 (original + backup) | 1 (single copy) |
+| Ancilla qubits | Yes (teleportation channel) | No |
+| Refresh mechanism | Quantum teleportation | None |
+| Desgaste tracking | QPC odometer (c_max + t_max) | None |
+| Total qubits | n × (3R + 1) | n × (R + 1) |
+| Noise mitigation | Active (tele-refresh resets decoherence) | Passive (accumulates) |
 
 ---
 
-## Test Output Interpretation
+## Running Tests
 
-### Comparative Analysis Output
-```bash
-$ python main.py
+### Unit Tests
+```powershell
+# Teleportation test
+python tests/teleportation_test.py
 
-======================================================================
-SQM Compiler - Dual-Register Memory with Quantum Teleportation
-Target state: |0⟩
-======================================================================
+# Work phase test
+python tests/work_phase_test.py
 
-[Workload 1] Compilation Phase
-  Qubits: 5
-  Depth: 42
-  Size: 28
+# BipartiteQPC test
+python tests/qpc_test.py
 
-[SQM Results]
-  Fidelity: 0.8532
-  Total Shots: 256
-  Top 5 outcomes:
-    |00000⟩: 218 shots
-    |10000⟩: 38 shots
-    ...
+# Measurement parser test
+python tests/measurement_parser_test.py
 
-======================================================================
-SWAP Compiler - Single-Register Memory (Baseline)
-Target state: |0⟩
-======================================================================
+# Simulator integration test
+python tests/simulator_integration_test.py
 
-[Workload 1] Compilation Phase
-  Qubits: 3
-  Depth: 28
-  Size: 16
+# CMax validator integration test
+python tests/cmax_validator_integration_test.py
 
-[SWAP Results]
-  Fidelity: 0.7821
-  Total Shots: 256
-  Top 5 outcomes:
-    |000⟩: 200 shots
-    |010⟩: 56 shots
-    ...
+# SWAP validator integration test
+python tests/swap_validator_integration_test.py
 
-[Comparative Analysis - Workload 1]
-+─────────────────────────┬─────────┬─────────+
-│ Metric                  │ SQM     │ SWAP    │
-├─────────────────────────┼─────────┼─────────┤
-│ Fidelity                │ 85.32%  │ 78.21%  │
-│ Qubits                  │ 5       │ 3       │
-│ Depth                   │ 42      │ 28      │
-│ Gate count              │ 28      │ 16      │
-│ Improvement             │ +7.11pp │ baseline│
-└─────────────────────────┴─────────┴─────────┘
+# IBM hardware backend connectivity test
+python tests/Test_IBMHardwareBackend.py
 ```
 
-### Output Interpretation
-- **Fidelity:** Quantum state preservation quality (higher = better)
-- **Gate count:** Total quantum operations (correlates with decoherence)
-- **Depth:** Circuit timeline length (deeper = more errors accumulate)
-- **pp = percentage points:** Absolute difference in fidelity
+### Running RB Characterization Validators
+```powershell
+# SWAP pair decay characterization
+python src/time_calculation/cmax_validator_swap.py
 
-### Single Test Outputs
+# SQM (SWAP + teleportation) characterization
+python src/time_calculation/cmax_validator_sqm.py
 
-**Teleportation Test** — Bell state distribution after 1024 shots (should show 2-4 outcomes)
-```
-[4] Measurement Results:
-    - Total shots: 1024
-    - Unique outcomes: 2
-      010: 512 (50.00%)
-      110: 512 (50.00%)
+# Teleportation-only characterization
+python src/time_calculation/cmax_validator_teleport.py
+
+# NOT gate pair characterization
+python src/time_calculation/cmax_validator_not.py
+
+# Delay-based idle decoherence characterization
+python src/time_calculation/Tmax_validator_delay.py
+
+# Identity gate idle decoherence characterization
+python src/time_calculation/tmax_validator_Id.py
 ```
 
-**Work Phase Test** — SWAP preservation with asymmetric state (should show 100% correlation)
-```
-[4] Measurement Results:
-    cr_storage (Storage Register):  01: 1024 (100.00%)
-    cr_operation (Operation Register): 10: 1024 (100.00%)
-```
+Each validator can be switched between `"default"` (FakeKyiv) and `"IBM"` (real hardware) by editing the `backend_mode` variable at the bottom of each file.
 
 ---
 
-## Code Quality & Maintenance (April 6, 2026)
+## Output Directory Structure
 
-### Recent Updates
-✅ **Comment Cleanup** — Removed outdated, redundant, and contradictory comments
-- Eliminated misleading noise model documentation
-- Removed debug print statements
-- Cleaned up visual separators (~35 lines)
-- Kept only essential documentation
+| Directory | Contents |
+|-----------|----------|
+| `data/` | CSV files: comparison results, hardware experiments, RB characterization |
+| `results/` | PNG files: fidelity comparison graphs, RB decay curves, qubit mapping visualizations |
+| `results_Article/` | Curated results for publication (SM decay curves, comparison graphs) |
+| `Final_results/` | Consolidated archive of all experiment data and results |
 
-✅ **Code Organization** — 8 files reviewed and optimized
-- sqm_simulator.py & swap_simulator.py: Fixed noise model comments
-- qubit_mapper.py: Removed commented debug code
-- memory_register.py & operation_register.py: Simplified structure
-- All files: Ensured accuracy between code and comments
+### Output File Naming Convention
+- `comparison_results_YYYYMMDD_HHMMSS.csv` — Local simulation comparison data
+- `comparison_graph_YYYYMMDD_HHMMSS.png` — Local simulation comparison graph
+- `hardware_comparison_multi_YYYYMMDD_HHMMSS.csv` — Hardware multi-workload data
+- `hardware_comparison_multi_graph_YYYYMMDD_HHMMSS.png` — Hardware multi-workload graph
+- `rb_decay_curve_<protocol>_n=<N>.png` — RB decay curve for specific protocol
+- `SM_decay_curve_<protocol>_N<n>.csv` — Published decay curve data
 
 ---
 
@@ -321,7 +449,54 @@ Target state: |0⟩
 | **0 — Environment** | venv, dependencies, project structure | ✅ Complete |
 | **A — Building Blocks** | Registers, teleportation, work phase circuits | ✅ Complete |
 | **B — Hardware Mapping** | QubitMapper, chain topology allocation | ✅ Complete |
-| **C — Noise Model** | T1/T2 from FakeKyiv, thermal relaxation | ✅ Complete |
+| **C — Noise Model** | T1/T2 from FakeKyiv, thermal relaxation, backend abstraction | ✅ Complete |
 | **D — Comparative Analysis** | SQM ↔ SWAP compiler validation & metrics | ✅ Complete |
-| **E — Real Hardware** | Execution on IBM Kyiv/Brisbane (pending quota) | ⏳ Pending |
-| **F — Optimization** | ML-based adaptive thresholds, topological improvements | 🔲 Future |
+| **E — RB Characterization** | Magesan model fitting, C_MAX/T_MAX validation (7 protocols) | ✅ Complete |
+| **F — Real Hardware** | IBM Quantum execution (Kingston), multi-scenario experiments | ✅ Complete |
+| **G — Flow Measurement** | Operation register fidelity, superposition state support | ✅ Complete |
+| **H — Optimization** | ML-based adaptive thresholds, topological improvements | 🔲 Future |
+
+---
+
+## Recent Changes (April 2026)
+
+### ✅ Backend Abstraction Layer
+- Added `BackendInterface` abstract class with dependency injection pattern
+- `AerSimulatorBackend` wraps FakeKyiv with configurable thermal relaxation
+- `IBMHardwareBackend` wraps real IBM hardware with SamplerV2, `MockResult`/`MockJob` for V1 compatibility, immutable `time_idle_ns` after calibration
+
+### ✅ IBM Quantum Hardware Execution
+- `main_hardware_experiment.py` — Multi-scenario, multi-workload hardware experiments
+- 3 experimental scenarios (SWAP baseline, SQM no-delay, SQM real timing)
+- Selectable scenario execution (`scenario = [1, 3]`)
+- Hardware results processor with adaptive graph generation (1, 2, or 3 bars)
+
+### ✅ Flow Simulators (Operation Register Fidelity)
+- `SQMFlowCompiler` and `SwapFlowCompiler` — measure fidelity on `q_work` instead of memory registers
+- `flow` parameter in `main.py` and `main_hardware_experiment.py` toggles between memory and flow modes
+
+### ✅ Superposition State Support
+- `initial_state = 2` → |+⟩ (Hadamard gate), fidelity target = |0⟩
+- `initial_state = 3` → |−⟩ (X + Hadamard gates), fidelity target = |1⟩
+- Measurement basis rotation (H before measurement) for proper fidelity validation
+
+### ✅ RB Characterization Suite (7 Validators)
+- SWAP, SQM, Teleportation, NOT, Delay, Identity gate characterization
+- Magesan model `F(m) = A·p^m + B` and exponential decay `F(t) = A·exp(−t/τ) + B`
+- Shared `ibm_backend_helper.py` for dynamic backend selection (FakeKyiv ↔ IBM hardware)
+- Automatic decay curve plots and CSV export
+
+### ✅ Measurement Parser Utility
+- Unified `MeasurementParser` class for endianness-aware bitstring extraction
+- Handles Qiskit's little-endian register ordering with explicit layout dictionaries
+- Used by all compilers and validators
+
+### ✅ Idle Gate Logic Fix
+- Fixed `_get_active_qubits_for_idle` to apply decoherence only on qubits currently holding active data
+- Prevents unnecessary fidelity degradation on inactive qubits after teleportation
+
+### ✅ Code Quality & Maintenance
+- Removed outdated, redundant, and contradictory comments (~35 lines cleaned)
+- Fixed noise model documentation across all simulators
+- Removed debug print statements and commented-out code
+- All 8+ source files reviewed and optimized
