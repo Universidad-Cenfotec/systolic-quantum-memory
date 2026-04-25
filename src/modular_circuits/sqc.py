@@ -3,7 +3,7 @@ from enum import Enum
 from typing import Dict
 
 
-class MemLocation(Enum):
+class CacheLocation(Enum):
     """
     Representa el registro físico donde se almacena actualmente un qubit lógico.
     
@@ -14,17 +14,17 @@ class MemLocation(Enum):
     BACKUP = "B"
 
 
-class QPC:
+class SQC:
     """
-    Odómetro Híbrido para Quantum Ping-Pong Cuántico (QPC).
+    Odómetro Híbrido para Quantum Sequential Cache (SQC).
 
     Rastrea tanto desgaste activo (compuertas) como pasivo (tiempo) y
-    gestiona la ubicación física de los qubits lógicos (ORIGINAL vs BACKUP).
+    gestiona la ubicación física de los qubits lógicos en cache (ORIGINAL vs BACKUP).
     """
 
     def __init__(self, logical_size: int, c_max: int, t_max: float) -> None:
         """
-        Inicializa el controlador QPC.
+        Inicializa el controlador SQC.
         
         Args:
             logical_size: Número de direcciones lógicas
@@ -35,9 +35,9 @@ class QPC:
         self.c_max = c_max
         self.t_max = t_max
         
-        # Ubicación actual por dirección lógica: ORIGINAL o BACKUP
-        self._location: Dict[int, MemLocation] = {
-            i: MemLocation.ORIGINAL for i in range(logical_size)
+        # Ubicación en cache por dirección lógica: ORIGINAL o BACKUP
+        self._cache_location: Dict[int, CacheLocation] = {
+            i: CacheLocation.ORIGINAL for i in range(logical_size)
         }
         
         # Costo térmico acumulado por dirección lógica (desgaste activo)
@@ -54,18 +54,18 @@ class QPC:
                 f"[0, {self.logical_size - 1}]"
             )
 
-    # ==================== Gestión de Ubicación ====================
+    # ==================== Gestión de Ubicación en Cache ====================
 
-    def get_location(self, logical_address: int) -> MemLocation:
+    def get_cache_location(self, logical_address: int) -> CacheLocation:
         """
-        Retorna el registro físico activo donde se encuentra el qubit lógico.
+        Retorna el registro físico activo donde se encuentra el qubit lógico en cache.
 
         Returns:
-            MemLocation.ORIGINAL si el qubit está en mem_orig_i,
-            MemLocation.BACKUP   si el qubit está en mem_backup_i.
+            CacheLocation.ORIGINAL si el qubit está en mem_orig_i,
+            CacheLocation.BACKUP   si el qubit está en mem_backup_i.
         """
         self._validate_address(logical_address)
-        return self._location[logical_address]
+        return self._cache_location[logical_address]
 
     # ==================== Odómetro Híbrido ====================
 
@@ -95,7 +95,7 @@ class QPC:
             or self._idle_times[logical_address] >= self.t_max
         )
 
-    def tick(self, logical_address: int) -> MemLocation:
+    def tick(self, logical_address: int) -> CacheLocation:
         """
         Ejecuta un tele-refresco: alterna la ubicación activa (ORIGINAL ↔ BACKUP)
         y resetea el odómetro híbrido.
@@ -104,21 +104,21 @@ class QPC:
             logical_address: Dirección lógica de la memoria
         
         Returns:
-            La nueva ubicación activa (MemLocation.ORIGINAL o MemLocation.BACKUP).
+            La nueva ubicación activa (CacheLocation.ORIGINAL o CacheLocation.BACKUP).
         """
         self._validate_address(logical_address)
         
-        # Alternar ubicación: ORIGINAL → BACKUP → ORIGINAL
-        if self._location[logical_address] == MemLocation.ORIGINAL:
-            self._location[logical_address] = MemLocation.BACKUP
+        # Alternar ubicación en cache: ORIGINAL → BACKUP → ORIGINAL
+        if self._cache_location[logical_address] == CacheLocation.ORIGINAL:
+            self._cache_location[logical_address] = CacheLocation.BACKUP
         else:
-            self._location[logical_address] = MemLocation.ORIGINAL
+            self._cache_location[logical_address] = CacheLocation.ORIGINAL
         
         # Resetear AMBOS contadores del odómetro
         self._costs[logical_address] = 0
         self._idle_times[logical_address] = 0.0
         
-        return self._location[logical_address]
+        return self._cache_location[logical_address]
 
     # ==================== Métodos de Inspección ====================
 

@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 from qiskit import QuantumCircuit, QuantumRegister, ClassicalRegister, transpile
 from qiskit.circuit import Instruction
 
-from src.modular_circuits.qpc import QPC, MemLocation
+from src.modular_circuits.sqc import SQC, CacheLocation
 from src.modular_circuits.memory_register import StorageRegister
 from src.modular_circuits.operation_register import OperationRegister
 from src.functions.work_phase import SystolicWorkPhase
@@ -114,7 +114,7 @@ class SQMFlowCompiler:
         # 4. Initialize QPC (Odometer - Hybrid desgaste tracker)
         # ----------------------------------------------------------
 
-        self.qpc = QPC(logical_size=R, c_max=c_max, t_max=t_max_ns)
+        self.qpc = SQC(logical_size=R, c_max=c_max, t_max=t_max_ns)
         # Note: QPC fully manages wear-down tracking (costs and idle times).
         # No local tracking needed - consult QPC via get_cost() and get_idle_time().
 
@@ -327,7 +327,7 @@ class SQMFlowCompiler:
 
                 print(f"    -> READ from Mem[{logical_addr}]")
 
-                if self.qpc.get_location(logical_addr) == MemLocation.ORIGINAL:
+                if self.qpc.get_cache_location(logical_addr) == CacheLocation.ORIGINAL:
                     source_reg = self._built_registers[f"mem_orig_{logical_addr}"]
                 else:
                     source_reg = self._built_registers[f"mem_backup_{logical_addr}"]
@@ -346,7 +346,7 @@ class SQMFlowCompiler:
 
                 print(f"    -> WRITE to Mem[{logical_addr}]")
 
-                if self.qpc.get_location(logical_addr) == MemLocation.ORIGINAL:
+                if self.qpc.get_cache_location(logical_addr) == CacheLocation.ORIGINAL:
                     dest_reg = self._built_registers[f"mem_orig_{logical_addr}"]
                 else:
                     dest_reg = self._built_registers[f"mem_backup_{logical_addr}"]
@@ -389,7 +389,7 @@ class SQMFlowCompiler:
         
         # 2. For each logical address, add qubits from the register that holds the data
         for logical_addr in range(self.R):
-            if self.qpc.get_location(logical_addr) == MemLocation.ORIGINAL:
+            if self.qpc.get_cache_location(logical_addr) == CacheLocation.ORIGINAL:
                 qr_data = self._built_registers[f"mem_orig_{logical_addr}"]
             else:
                 qr_data = self._built_registers[f"mem_backup_{logical_addr}"]
@@ -410,8 +410,8 @@ class SQMFlowCompiler:
         if requires_refresh:
             print(f"    [Odometer] Threshold exceeded for Mem[{logical_addr}] -> Tele-refreshing")
 
-            current_location = self.qpc.get_location(logical_addr)
-            if current_location == MemLocation.ORIGINAL:
+            current_location = self.qpc.get_cache_location(logical_addr)
+            if current_location == CacheLocation.ORIGINAL:
                 source_reg = self._built_registers[f"mem_orig_{logical_addr}"]
                 dest_reg = self._built_registers[f"mem_backup_{logical_addr}"]
             else:
@@ -575,7 +575,7 @@ class SQMFlowCompiler:
             "c_max": self.c_max,
             "t_max_ns": self.t_max_ns,
             "qpc_locations": {
-                i: self.qpc.get_location(i).value for i in range(self.R)
+                i: self.qpc.get_cache_location(i).value for i in range(self.R)
             },
             "qpc_costs": {
                 i: self.qpc.get_cost(i) for i in range(self.R)

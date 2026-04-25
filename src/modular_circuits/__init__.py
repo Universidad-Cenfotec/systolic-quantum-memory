@@ -2,6 +2,6 @@
 
 from .memory_register import StorageRegister
 from .operation_register import OperationRegister
-from .qpc import QPC
+from .sqc import SQC
 
-__all__ = ["StorageRegister", "OperationRegister", "QPC"]
+__all__ = ["StorageRegister", "OperationRegister", "SQC"]
