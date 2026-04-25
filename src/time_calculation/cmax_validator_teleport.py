@@ -19,12 +19,14 @@ try:
     from src.functions.qubit_mapper import QubitMapper
     from src.functions.teleportation import SystolicTeleportation
     from src.utils.measurement_parser import MeasurementParser
+    from src.time_calculation.ibm_backend_helper import get_ibm_backend, run_on_ibm
 except ModuleNotFoundError:
     # Add parent directory to path for direct script execution
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
     from src.functions.qubit_mapper import QubitMapper
     from src.functions.teleportation import SystolicTeleportation
     from src.utils.measurement_parser import MeasurementParser
+    from src.time_calculation.ibm_backend_helper import get_ibm_backend, run_on_ibm
 
 
 # =============================================================================
@@ -64,21 +66,29 @@ class CMaxValidatorTeleport:
 
     # -- Constructor ----------------------------------------------------------
 
-    def __init__(self, N: int = 1) -> None:
+    def __init__(self, N: int = 1, backend=None) -> None:
         """
         Args:
             N: Word width (qubits per register). Total qubits = 3*N.
+            backend: Optional external backend (e.g. real IBM). If None, uses FakeKyiv.
         """
         # 0. Dynamic word width parameter
         self.N = N
         self.d = 2 ** self.N          # Hilbert-space dimension per register
         self.B_ideal = 1.0 / self.d   # Maximum-mixing asymptote
 
-        # 1. Reference backend (calibration snapshot from real IBM Kyiv)
-        self.backend = FakeKyiv()
-
-        # 2. Complete noise model (depolarization + thermal relaxation)
-        self.noise_model = NoiseModel.from_backend(self.backend)
+        # 1. Backend configuration
+        if backend is not None:
+            self.backend = backend
+            self.is_ibm = True
+            self.noise_model = None
+            print(f"[CMaxValidatorTeleport] Using IBM hardware backend: {self.backend.name}")
+        else:
+            # 1. Reference backend (calibration snapshot from real IBM Kyiv)
+            self.backend = FakeKyiv()
+            self.is_ibm = False
+            # 2. Complete noise model (depolarization + thermal relaxation)
+            self.noise_model = NoiseModel.from_backend(self.backend)
 
         # 3. Detect native 2Q gate and extract average error.
         self.native_2q_gate: str = ""
@@ -177,16 +187,18 @@ class CMaxValidatorTeleport:
         # -- Teleportation module (fresh instance to reset caches) -------------
         teleporter = SystolicTeleportation(name="teleport_validator")
 
+        # -- Single cr_bell register reused across ALL teleportation cycles ----
+        # The classical bits are overwritten each cycle after feed-forward
+        # corrections are applied. No need for separate registers per cycle.
+        cr_bell = ClassicalRegister(2 * self.N, name="cr_bell")
+        qc.add_register(cr_bell)
+
         # -- Apply m teleportation cycles (ping-pong between A and B) ----------
         for k in range(m_teleports):
             if k % 2 == 0:
                 src_reg, dst_reg = reg_A, reg_B
             else:
                 src_reg, dst_reg = reg_B, reg_A
-
-            # Create a fresh cr_bell register for this cycle
-            cr_bell = ClassicalRegister(2 * self.N, name=f"cr_bell_{k}")
-            qc.add_register(cr_bell)
 
             qc = teleporter.build_circuit(
                 qc,
@@ -217,23 +229,30 @@ class CMaxValidatorTeleport:
             initial_layout[i]                = phys_a     # reg_A
             initial_layout[self.N + i]       = phys_b     # reg_B
             initial_layout[2 * self.N + i]   = phys_anc   # ancilla
-
+        
+        #print(qc.draw(output="text"))
         # -- Transpile and simulate --------------------------------------------
-        sim  = AerSimulator(noise_model=self.noise_model)
         qc_t = transpile(
             qc, backend=self.backend,
             optimization_level=0,
             initial_layout=initial_layout,
         )
-        job    = sim.run(qc_t, shots=shots)
-        counts: dict[str, int] = job.result().get_counts()
+
+        if self.is_ibm:
+            # Run on real IBM hardware via SamplerV2
+            counts = run_on_ibm(qc_t, self.backend, shots=shots)
+        else:
+            # Run on local AerSimulator with noise model
+            sim  = AerSimulator(noise_model=self.noise_model)
+            job    = sim.run(qc_t, shots=shots)
+            counts = job.result().get_counts()
 
         # -- Fidelity extraction -----------------------------------------------
-        # Build register layout for robust extraction (handles all m values)
+        # Only two classical registers: cr_final and cr_bell (reused)
         reg_names = ["cr_final"]
         reg_sizes = [self.N]
-        for k in range(m_teleports):
-            reg_names.append(f"cr_bell_{k}")
+        if m_teleports > 0:
+            reg_names.append("cr_bell")
             reg_sizes.append(2 * self.N)
 
         register_layout = MeasurementParser.build_register_layout_from_order(
@@ -563,15 +582,25 @@ class CMaxValidatorTeleport:
 # =============================================================================
 
 if __name__ == "__main__":
+    # =========================================================================
+    # BACKEND MODE: "default" = FakeKyiv simulator | "IBM" = real IBM hardware
+    # =========================================================================
+    backend_mode = "IBM"  # Change to "IBM" to run on real IBM hardware
+ 
     # 1. DEFINE THE ARCHITECTURE (N = Word width)
-    N_qubits = 4
-    validator = CMaxValidatorTeleport(N=N_qubits)
+    N_qubits = 1
+
+    if backend_mode == "IBM":
+        ibm_backend = get_ibm_backend("ibm_kingston")
+        validator = CMaxValidatorTeleport(N=N_qubits, backend=ibm_backend)
+    else:
+        validator = CMaxValidatorTeleport(N=N_qubits)
 
     # -- Phase B.1: Complete RB characterization (teleport-only) ---------------
     m_list = [0, 1, 2, 4, 6, 8, 10, 15, 20, 25, 30, 40, 50, 60, 80, 100]
-    popt = validator.run_rb_characterization(
+    popt = validator.run_rb_characterization(  
         m_list, shots=4000,
-        plot_path=f"results/rb_decay_curve_teleport n={N_qubits}.png",
+        plot_path=f"results/rb_decay_curve_teleport n={N_qubits}.png", 
     )
 
     # -- Phase B.2: Print results and validate model ---------------------------

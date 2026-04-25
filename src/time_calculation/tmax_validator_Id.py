@@ -13,6 +13,13 @@ from qiskit_aer import AerSimulator
 from qiskit_aer.noise import NoiseModel, thermal_relaxation_error
 from qiskit_ibm_runtime.fake_provider import FakeKyiv
 
+try:
+    from src.time_calculation.ibm_backend_helper import get_ibm_backend, run_on_ibm
+except ModuleNotFoundError:
+    import sys
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
+    from src.time_calculation.ibm_backend_helper import get_ibm_backend, run_on_ibm
+
 
 # =============================================================================
 # Magesan decay model (discrete operations): F(m) = A * p^m + B
@@ -60,6 +67,7 @@ class TmaxValidatorId:
         t1_ns: float = 192_566,
         t2_ns: float = 35_887,
         idle_time_ns: float = 1000,
+        backend=None,
     ) -> None:
         """
         Args:
@@ -68,6 +76,8 @@ class TmaxValidatorId:
             t2_ns        : T2 dephasing time in nanoseconds.
             idle_time_ns : Duration of one ID gate idle period in
                            nanoseconds (constant error per gate).
+            backend      : Optional external backend (e.g. real IBM).
+                           If None, uses FakeKyiv + AerSimulator.
         """
         self.N = N
         self.d = 2 ** self.N
@@ -78,22 +88,33 @@ class TmaxValidatorId:
         self.t2_ns = t2_ns
         self.idle_time_ns = idle_time_ns
 
-        # 1. Reference backend
-        self.backend = FakeKyiv()
+        # Backend configuration
+        if backend is not None:
+            self.backend = backend
+            self.is_ibm = True
+            self.noise_model = None
+            self.simulator = None
+            print(f"[TmaxValidatorId] Using IBM hardware backend: {self.backend.name}")
+            print(f"[TmaxValidatorId] NOTE: On real hardware, noise is physical.")
+            print(f"[TmaxValidatorId]       Custom thermal_relaxation_error is NOT injected.")
+        else:
+            # 1. Reference backend
+            self.backend = FakeKyiv()
+            self.is_ibm = False
 
-        # 2. Build noise model: backend base + constant thermal relax on 'id'
-        self.noise_model = NoiseModel.from_backend(self.backend)
-        idle_error = thermal_relaxation_error(
-            self.t1_ns, self.t2_ns, self.idle_time_ns
-        )
-        num_qubits = self.backend.configuration().n_qubits
-        for q in range(num_qubits):
-            self.noise_model.add_quantum_error(idle_error, "id", [q], warnings=False)
+            # 2. Build noise model: backend base + constant thermal relax on 'id'
+            self.noise_model = NoiseModel.from_backend(self.backend)
+            idle_error = thermal_relaxation_error(
+                self.t1_ns, self.t2_ns, self.idle_time_ns
+            )
+            num_qubits = self.backend.configuration().n_qubits
+            for q in range(num_qubits):
+                self.noise_model.add_quantum_error(idle_error, "id", [q], warnings=False)
 
-        # 3. Simulator
-        self.simulator = AerSimulator(
-            noise_model=self.noise_model, method="matrix_product_state"
-        )
+            # 3. Simulator
+            self.simulator = AerSimulator(
+                noise_model=self.noise_model, method="matrix_product_state"
+            )
 
         # 4. Fit parameters -- assigned in print_id_results()
         self.A_fit: float = 0.0
@@ -129,8 +150,14 @@ class TmaxValidatorId:
 
         # Transpile & run
         qc_t = transpile(qc, backend=self.backend, optimization_level=0)
-        job = self.simulator.run(qc_t, shots=shots)
-        counts: dict[str, int] = job.result().get_counts()
+
+        if self.is_ibm:
+            # Run on real IBM hardware via SamplerV2
+            counts = run_on_ibm(qc_t, self.backend, shots=shots)
+        else:
+            # Run on local AerSimulator with noise model
+            job = self.simulator.run(qc_t, shots=shots)
+            counts = job.result().get_counts()
 
         target_state = "1" * self.N
         fidelity_count = 0
@@ -441,6 +468,10 @@ class TmaxValidatorId:
 # =============================================================================
 
 if __name__ == "__main__":
+    # =========================================================================
+    # BACKEND MODE: "default" = FakeKyiv simulator | "IBM" = real IBM hardware
+    # =========================================================================
+    backend_mode = "default"  # Change to "IBM" to run on real IBM hardware
 
     # =========================================================================
     # CONFIGURATION (all noise parameters defined here)
@@ -453,12 +484,22 @@ if __name__ == "__main__":
     T2_NS          = 35_887       # T2 dephasing  -- 35.887 us  = 35887 ns
     IDLE_TIME_NS   = 1350         # Duration of one ID idle period (ns)
 
-    validator = TmaxValidatorId(
-        N=N_qubits,
-        t1_ns=T1_NS,
-        t2_ns=T2_NS,
-        idle_time_ns=IDLE_TIME_NS,
-    )
+    if backend_mode == "IBM":
+        ibm_backend = get_ibm_backend("ibm_kingston")
+        validator = TmaxValidatorId(
+            N=N_qubits,
+            t1_ns=T1_NS,
+            t2_ns=T2_NS,
+            idle_time_ns=IDLE_TIME_NS,
+            backend=ibm_backend,
+        )
+    else:
+        validator = TmaxValidatorId(
+            N=N_qubits,
+            t1_ns=T1_NS,
+            t2_ns=T2_NS,
+            idle_time_ns=IDLE_TIME_NS,
+        )
 
     # -- Phase 1: ID gate characterization (curve_fit) -------------------------
     m_list = [0, 1, 2, 4, 6, 8, 10, 15, 20, 25, 30, 40, 50, 60, 80, 100]

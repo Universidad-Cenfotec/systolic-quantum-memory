@@ -1,0 +1,31 @@
+SQM RB Characterization Results (NOT protocol)
+Timestamp,2026-04-23T19:28:15.870553
+Backend,fake_kyiv
+Architecture,2 registers * 1 qubits = 2 total qubits
+Hilbert Dimension,d = 2^1 = 2
+Native Gate,X
+
+Magesan Fit Parameters
+A (SPAM contrast),0.620461
+p (process decay),0.999879
+B (asymptote),0.369428
+r_empirical,0.000060
+p_not_theory,0.002170
+
+m (NOT cycles),F_emp (fidelity),F_fit (fitted)
+0,0.988750,0.989889
+1,0.988000,0.989814
+2,0.989750,0.989739
+4,0.988250,0.989589
+6,0.993250,0.989439
+8,0.988500,0.989289
+10,0.989500,0.989139
+15,0.990500,0.988765
+20,0.989750,0.988390
+25,0.985750,0.988016
+30,0.986500,0.987642
+40,0.986750,0.986894
+50,0.987250,0.986148
+60,0.986500,0.985402
+80,0.984250,0.983914
+100,0.981250,0.982429

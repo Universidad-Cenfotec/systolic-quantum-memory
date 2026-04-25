@@ -369,7 +369,7 @@ class SwapFlowCompiler:
             print("[Transpile] Translating to hardware topology with seed=42...")
             
             initial_layout = self._get_initial_layout(qc_measured)
-            print(qc_measured.draw(output='text'))
+            #print(qc_measured.draw(output='text'))
             print("[Noise Model] Extracting noise characteristics...")
             
             qc_transpiled = transpile(

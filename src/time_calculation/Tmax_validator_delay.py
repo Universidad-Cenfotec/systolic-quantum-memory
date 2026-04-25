@@ -13,6 +13,13 @@ from qiskit_aer import AerSimulator
 from qiskit_aer.noise import NoiseModel
 from qiskit_ibm_runtime.fake_provider import FakeKyiv
 
+try:
+    from src.time_calculation.ibm_backend_helper import get_ibm_backend, run_on_ibm
+except ModuleNotFoundError:
+    import sys
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
+    from src.time_calculation.ibm_backend_helper import get_ibm_backend, run_on_ibm
+
 
 # =============================================================================
 # Exponential decay model: F(t) = A * exp(-t/tau) + B
@@ -52,25 +59,36 @@ class TmaxValidatorDelay:
 
     # -- Constructor ----------------------------------------------------------
 
-    def __init__(self, N: int = 1) -> None:
+    def __init__(self, N: int = 1, backend=None) -> None:
         """
         Args:
             N: Number of qubits per register (word width).
+            backend: Optional external backend (e.g. real IBM). If None, uses FakeKyiv.
         """
         self.N = N
         self.d = 2 ** self.N
         self.B_ideal = 1.0 / self.d      # Maximum-mixing floor (analogue of CMax)
 
-        # 1. Reference backend (calibration snapshot from real IBM Kyiv)
-        self.backend = FakeKyiv()
+        # Backend configuration
+        if backend is not None:
+            self.backend = backend
+            self.is_ibm = True
+            self.noise_model = None
+            self.simulator = None
+            print(f"[TmaxValidatorDelay] Using IBM hardware backend: {self.backend.name}")
+            print(f"[TmaxValidatorDelay] NOTE: delay() is a native hardware instruction.")
+        else:
+            # 1. Reference backend (calibration snapshot from real IBM Kyiv)
+            self.backend = FakeKyiv()
+            self.is_ibm = False
 
-        # 2. Noise model extracted from backend (plain simulator avoids
-        #    ConstrainedReschedule scheduling issues with delays/barriers)
-        self.noise_model = NoiseModel.from_backend(self.backend)
-        self.simulator = AerSimulator(noise_model=self.noise_model)
+            # 2. Noise model extracted from backend (plain simulator avoids
+            #    ConstrainedReschedule scheduling issues with delays/barriers)
+            self.noise_model = NoiseModel.from_backend(self.backend)
+            self.simulator = AerSimulator(noise_model=self.noise_model)
 
         # 3. Backend dt (seconds per tick) -- used to convert ns -> dt
-        self.dt_sec: float = self.backend.dt
+        self.dt_sec: float = self.backend.dt if hasattr(self.backend, 'dt') and self.backend.dt else 1e-9
 
         # 4. Fit parameters -- assigned in print_delay_results()
         self.A_fit:   float = 0.0
@@ -91,22 +109,32 @@ class TmaxValidatorDelay:
 
         qc = QuantumCircuit(self.N, self.N)
 
+
         # Initialise |1>^N
         for i in range(self.N):
             qc.x(i)
+            qc.h(i)
 
         # Apply delay (converted to backend dt units)
-        #delay_dt = int(delay_ns * 1e-9 / self.dt_sec) if delay_ns > 0 else 0
         if delay_ns > 0:
             for i in range(self.N):
                 qc.delay(int(delay_ns), i, unit='ns')
 
+        for i in range(self.N):
+            qc.h(i)
         qc.measure(range(self.N), range(self.N))
 
         # Transpile & run (plain transpile -- no backend scheduling passes)
         qc_t = transpile(qc, optimization_level=0)
-        job = self.simulator.run(qc_t, shots=shots)
-        counts: dict[str, int] = job.result().get_counts()
+
+        if self.is_ibm:
+            # For IBM hardware, re-transpile against the real backend
+            qc_t = transpile(qc, backend=self.backend, optimization_level=0)
+            counts = run_on_ibm(qc_t, self.backend, shots=shots)
+        else:
+            # Run on local AerSimulator with noise model
+            job = self.simulator.run(qc_t, shots=shots)
+            counts = job.result().get_counts()
 
         target_state = "1" * self.N
         fidelity_count = 0
@@ -403,25 +431,32 @@ class TmaxValidatorDelay:
 # =============================================================================
 
 if __name__ == "__main__":
+    # =========================================================================
+    # BACKEND MODE: "default" = FakeKyiv simulator | "IBM" = real IBM hardware
+    # =========================================================================
+    backend_mode = "default"  # Change to "IBM" to run on real IBM hardware
 
     # 1. DEFINE THE ARCHITECTURE (N = Word width)
-    N_qubits = 2
+    N_qubits = 1 
     target_fidelity = 0.75
-
-    validator = TmaxValidatorDelay(N=N_qubits)
+ 
+    if backend_mode == "IBM":
+        ibm_backend = get_ibm_backend("ibm_kingston")
+        validator = TmaxValidatorDelay(N=N_qubits, backend=ibm_backend)
+    else:
+        validator = TmaxValidatorDelay(N=N_qubits)
 
     # -- Phase 1: Delay characterization (curve_fit) ---------------------------
     #    Define delay times directly in nanoseconds.
     delay_list_ns = [
         0, 500, 1_000, 2_000, 4_000, 6_000, 8_000,
         10_000, 15_000, 20_000, 30_000, 40_000, 50_000,
-        60_000, 80_000, 100_000, 120_000, 150_000, 200_000,
-    ]
+        60_000, 80_000, 100_000, 120_000, 150_000, 200_000,400_000,600_000]
 
     popt = validator.run_delay_characterization(
         delay_list_ns,
-        shots=4000,
-        plot_path=f"results/delay_decay_curve_N{N_qubits}.png",
+        shots=1024,
+        plot_path=f"results/rb_decay_curve_delay_H_N{N_qubits}.png",
     )
 
     # -- Phase 2: Print results and validate model ----------------------------

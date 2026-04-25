@@ -19,12 +19,14 @@ try:
     from src.functions.qubit_mapper import QubitMapper
     from src.functions.teleportation import SystolicTeleportation
     from src.utils.measurement_parser import MeasurementParser
+    from src.time_calculation.ibm_backend_helper import get_ibm_backend, run_on_ibm
 except ModuleNotFoundError:
     # Add parent directory to path for direct script execution
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
     from src.functions.qubit_mapper import QubitMapper
     from src.functions.teleportation import SystolicTeleportation
     from src.utils.measurement_parser import MeasurementParser
+    from src.time_calculation.ibm_backend_helper import get_ibm_backend, run_on_ibm
 
 
 # =============================================================================
@@ -49,20 +51,25 @@ class CMaxValidator:
 
     # -- Constructor ----------------------------------------------------------
 
-    def __init__(self, N: int = 1) -> None:
+    def __init__(self, N: int = 1, backend=None) -> None:
       
         # 0. Dynamic word width parameter (now uses 4*N total qubits)
         self.N = N
         self.d = 2 ** self.N  # Hilbert space dimension per register
         self.B_ideal = 1.0 / self.d
 
-        # 1. Reference backend (calibration snapshot from real IBM Brisbane)
-        self.backend = FakeKyiv()
-
-        # 2. Complete noise model (depolarization + thermal relaxation)
-        #    Use try-except to handle Qiskit compatibility issues with FakeKyiv
-      
-        self.noise_model = NoiseModel.from_backend(self.backend)
+        # 1. Backend configuration
+        if backend is not None:
+            self.backend = backend
+            self.is_ibm = True
+            self.noise_model = None
+            print(f"[CMaxValidator] Using IBM hardware backend: {self.backend.name}")
+        else:
+            # 1. Reference backend (calibration snapshot from real IBM Brisbane)
+            self.backend = FakeKyiv()
+            self.is_ibm = False
+            # 2. Complete noise model (depolarization + thermal relaxation)
+            self.noise_model = NoiseModel.from_backend(self.backend)
 
         # 3. Detect native 2Q gate and extract average error.
         #    FakeKyiv uses ECR; auto-detects among [ECR, CX, CZ, RZX].
@@ -215,10 +222,16 @@ class CMaxValidator:
             
         # --------- TRANSPILE AND SIMULATE
         
-        sim  = AerSimulator(noise_model=self.noise_model)
         qc_t = transpile(qc, backend=self.backend, optimization_level=0, initial_layout=initial_layout)
-        job  = sim.run(qc_t, shots=shots)
-        counts: dict[str, int] = job.result().get_counts()
+
+        if self.is_ibm:
+            # Run on real IBM hardware via SamplerV2
+            counts = run_on_ibm(qc_t, self.backend, shots=shots)
+        else:
+            # Run on local AerSimulator with noise model
+            sim  = AerSimulator(noise_model=self.noise_model)
+            job  = sim.run(qc_t, shots=shots)
+            counts = job.result().get_counts()
 
         # --------- DIRECT VERIFICATION OF TELEPORTED STATUS
         
@@ -538,9 +551,19 @@ class CMaxValidator:
 # =============================================================================
 
 if __name__ == "__main__":
+    # =========================================================================
+    # BACKEND MODE: "default" = FakeKyiv simulator | "IBM" = real IBM hardware
+    # =========================================================================
+    backend_mode = "default"  # Change to "IBM" to run on real IBM hardware
+
     # -- DEFINE THE ARCHITECTURE (N = Word width per register) -----------------
-    N_qubits = 1
-    validator = CMaxValidator(N=N_qubits)
+    N_qubits = 2
+
+    if backend_mode == "IBM":
+        ibm_backend = get_ibm_backend("ibm_kingston")
+        validator = CMaxValidator(N=N_qubits, backend=ibm_backend)
+    else:
+        validator = CMaxValidator(N=N_qubits)
     
 
     # -- Phase B.1: Complete RB characterization with teleportation ------------

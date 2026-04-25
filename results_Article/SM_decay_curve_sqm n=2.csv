@@ -1,0 +1,32 @@
+SQM RB Characterization Results (SystolicTeleportation)
+Timestamp,2026-04-23T19:32:49.054868
+Backend,fake_kyiv
+Architecture,4 registers * 2 qubits = 8 total qubits
+Hilbert Dimension,d = 2^2 = 4
+Native Gate,ECR
+Teleportation Module,SystolicTeleportation (with active reset)
+
+Magesan Fit Parameters
+A (SPAM contrast),0.595784
+p (process decay),0.959972
+B (asymptote),0.312859
+r_empirical,0.030021
+p_swap_theory,0.259443
+
+m (SWAP cycles),F_emp (fidelity),F_fit (fitted)
+0,0.913000,0.908643
+1,0.884500,0.884795
+2,0.867500,0.861901
+4,0.817000,0.818827
+6,0.775500,0.779131
+8,0.748250,0.742550
+10,0.694000,0.708839
+15,0.638750,0.635683
+20,0.562750,0.576042
+25,0.538750,0.527420
+30,0.481500,0.487780
+40,0.437000,0.429118
+50,0.395750,0.390129
+60,0.375500,0.364215
+80,0.330500,0.335545
+100,0.313250,0.322880

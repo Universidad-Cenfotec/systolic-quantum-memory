@@ -11,6 +11,13 @@ import numpy as np
 import math
 from qiskit_ibm_runtime.fake_provider import FakeKyiv
 
+try:
+    from src.time_calculation.ibm_backend_helper import get_ibm_backend
+except ModuleNotFoundError:
+    import os, sys
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
+    from src.time_calculation.ibm_backend_helper import get_ibm_backend
+
 
 class TMaxCalculator:
     """
@@ -20,19 +27,27 @@ class TMaxCalculator:
     fidelity preservation across the entire quantum processor.
     """
     
-    def __init__(self, target_fidelity: float = 0.75, safety_percentile: int = 10):
+    def __init__(self, target_fidelity: float = 0.75, safety_percentile: int = 10, backend=None):
         """
         Initialize the Tmax calculator with coherence time statistics.
         
         Args:
             target_fidelity: Target fidelity for quantum state preservation (default: 0.75).
             safety_percentile: Percentile threshold for worst-case analysis (default: 10).
+            backend: Optional external backend (e.g. real IBM). If None, uses FakeKyiv.
         """
         self.target_fidelity = target_fidelity
         self.safety_percentile = safety_percentile
         
         # Initialize backend and extract coherence properties
-        self.backend = FakeKyiv()
+        if backend is not None:
+            self.backend = backend
+            self.is_ibm = True
+            print(f"[TMaxCalculator] Using IBM hardware backend: {self.backend.name}")
+        else:
+            self.backend = FakeKyiv()
+            self.is_ibm = False
+        
         properties = self.backend.properties()
         
         # Extract T1 and T2 times from all qubits
@@ -107,10 +122,19 @@ def main():
     Main execution function for Tmax Calculator.
     Demonstrates worst-case scenario analysis for SQM.
     """
+    # =========================================================================
+    # BACKEND MODE: "default" = FakeKyiv simulator | "IBM" = real IBM hardware
+    # =========================================================================
+    backend_mode = "default"  # Change to "IBM" to run on real IBM hardware
+
     print("\n🔬 Initializing SQM Tmax Calculator...")
     
-    # Create calculator with default parameters
-    calculator = TMaxCalculator(target_fidelity=0.75, safety_percentile=10)
+    # Create calculator with appropriate backend
+    if backend_mode == "IBM":
+        ibm_backend = get_ibm_backend("ibm_kingston")
+        calculator = TMaxCalculator(target_fidelity=0.75, safety_percentile=10, backend=ibm_backend)
+    else:
+        calculator = TMaxCalculator(target_fidelity=0.75, safety_percentile=10)
     
     # Calculate and display results
     tmax = calculator.calculate_tmax()

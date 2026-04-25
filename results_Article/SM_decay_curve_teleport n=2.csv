@@ -1,0 +1,33 @@
+RB Characterization Results (Multiple Teleportation Protocol)
+Timestamp,2026-04-23T19:53:55.935998
+Backend,fake_kyiv
+Architecture,3 registers × 2 qubits = 6 total qubits
+Registers,"reg_A (ping), reg_B (pong), ancilla (Bell channel)"
+Hilbert Dimension,d = 2^2 = 4
+Native Gate,ECR
+Protocol,"SystolicTeleportation (ping-pong, active reset)"
+
+Magesan Fit Parameters
+A (SPAM contrast),0.639563
+p (process decay per teleport),0.837270
+B (asymptote),0.289395
+r_empirical,0.122048
+p_teleport_theory,0.181462
+
+m (teleport cycles),F_emp (fidelity),F_fit (fitted)
+0,1.000000,0.928959
+1,0.766750,0.824883
+2,0.707000,0.737743
+4,0.575500,0.603696
+6,0.513750,0.509727
+8,0.466250,0.443852
+10,0.409500,0.397673
+15,0.366500,0.333947
+20,0.362500,0.307727
+25,0.327750,0.296938
+30,0.303000,0.292499
+40,0.281500,0.289921
+50,0.270750,0.289484
+60,0.266750,0.289410
+80,0.260000,0.289396
+100,0.247750,0.289395

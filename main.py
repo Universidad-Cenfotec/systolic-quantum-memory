@@ -39,7 +39,7 @@ idle_time_ns = 1000  # Idle period duration (ns) - default: 7.0 μs
 # initial_state = 1: |1> target (X gate)
 # initial_state = 2: |+> superposition (H gate, fidelity target = |0>)
 # initial_state = 3: |-> superposition (X+H gates, fidelity target = |1>)
-initial_state = 1  # 0 = |0>, 1 = |1>, 2 = |+> (H), 3 = |-> (XH)
+initial_state = 3  # 0 = |0>, 1 = |1>, 2 = |+> (H), 3 = |-> (XH)
 
 # Test Workloads
 
