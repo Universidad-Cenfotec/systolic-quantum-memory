@@ -163,13 +163,16 @@ class CMaxValidatorTeleport:
     def empirical_fidelity(self, m_teleports: int, shots: int = 4000) -> float:
         """
         Build a circuit that performs `m_teleports` successive teleportations
-        and measure the survival probability F = P(|0...0⟩).
+        and measure the survival probability F = P(|1...1⟩).
 
-        The state bounces between reg_A and reg_B:
-            cycle 0 (m=0): state in reg_A, no teleport → measure reg_A
-            cycle 1:       A → B  → measure reg_B
-            cycle 2:       B → A  → measure reg_A
-            cycle k:       source = A if k odd else B
+        Both reg_A and reg_B are initialised in |1⟩. The data starts in reg_A
+        and ping-pongs with each teleportation cycle:
+            m=0             : no teleport  → data in reg_A → measure reg_A
+            m=1 (A→B)       : 1 teleport   → data in reg_B → measure reg_B
+            m=2 (A→B, B→A) : 2 teleports  → data in reg_A → measure reg_A
+            m odd           : data ends in reg_B
+            m even (m>0)    : data returns to reg_A
+        The ancilla register is never initialised (always |0⟩).
         """
         if m_teleports < 0:
             raise ValueError(f"m_teleports must be >= 0, received: {m_teleports}")
@@ -183,6 +186,13 @@ class CMaxValidatorTeleport:
         cr_final = ClassicalRegister(self.N, name="cr_final")
 
         qc = QuantumCircuit(reg_A, reg_B, ancilla, cr_final)
+
+        # Initialise only the SOURCE register (reg_A) in |1>.
+        # reg_B (destination) must start in |0> for the Bell-pair generation
+        # inside the teleportation protocol to work correctly.
+        # The ancilla is also left in |0> (never initialised here).
+        for i in range(self.N):
+            qc.x(reg_A[i])
 
         # -- Teleportation module (fresh instance to reset caches) -------------
         teleporter = SystolicTeleportation(name="teleport_validator")
@@ -210,12 +220,16 @@ class CMaxValidatorTeleport:
             qc.barrier()
 
         # -- Determine which register holds the final state --------------------
+        # Data starts in reg_A and alternates with each teleportation cycle.
+        # Ping-pong tracker: A→B (k=1), B→A (k=2), A→B (k=3), ...
         if m_teleports == 0:
-            final_reg = reg_A
+            final_reg = reg_A                  # no teleport: still in A
         elif m_teleports % 2 == 1:
-            final_reg = reg_B    # odd number: state ends in B
+            final_reg = reg_B                  # odd  teleports: data ends in B
         else:
-            final_reg = reg_A    # even number: state returns to A
+            final_reg = reg_A                  # even teleports: data back in A
+
+        print(f"    [circuit] m={m_teleports} -> measuring {'reg_B' if final_reg is reg_B else 'reg_A'}")
 
         # -- Final measurement on the register holding the state ---------------
         for i in range(self.N):
@@ -230,7 +244,7 @@ class CMaxValidatorTeleport:
             initial_layout[self.N + i]       = phys_b     # reg_B
             initial_layout[2 * self.N + i]   = phys_anc   # ancilla
         
-        #print(qc.draw(output="text"))
+        #print(qc.draw(output="text"))  # Disabled: Unicode issues on Windows cp1252
         # -- Transpile and simulate --------------------------------------------
         qc_t = transpile(
             qc, backend=self.backend,
@@ -248,21 +262,18 @@ class CMaxValidatorTeleport:
             counts = job.result().get_counts()
 
         # -- Fidelity extraction -----------------------------------------------
-        # Only two classical registers: cr_final and cr_bell (reused)
-        reg_names = ["cr_final"]
-        reg_sizes = [self.N]
-        if m_teleports > 0:
-            reg_names.append("cr_bell")
-            reg_sizes.append(2 * self.N)
-
+        # cr_bell is ALWAYS added to the circuit (line 203-204), even for m=0.
+        # The bitstring from Qiskit always contains both registers (little-endian:
+        # cr_bell appears first/leftmost). The layout must always include both
+        # so that extract_register_bits correctly targets cr_final bits.
         register_layout = MeasurementParser.build_register_layout_from_order(
-            register_names=reg_names,
-            register_sizes=reg_sizes,
+            register_names=["cr_final", "cr_bell"],
+            register_sizes=[self.N, 2 * self.N],
             reverse_for_endianness=True,
         )
 
         fidelity_count = 0
-        target_state = "0" * self.N
+        target_state = "1" * self.N
 
         for bitstring, count in counts.items():
             final_bits = MeasurementParser.extract_register_bits(
@@ -589,7 +600,7 @@ if __name__ == "__main__":
  
     # 1. DEFINE THE ARCHITECTURE (N = Word width)
     N_qubits = 1
-
+ 
     if backend_mode == "IBM":
         ibm_backend = get_ibm_backend("ibm_kingston")
         validator = CMaxValidatorTeleport(N=N_qubits, backend=ibm_backend)
@@ -598,6 +609,7 @@ if __name__ == "__main__":
 
     # -- Phase B.1: Complete RB characterization (teleport-only) ---------------
     m_list = [0, 1, 2, 4, 6, 8, 10, 15, 20, 25, 30, 40, 50, 60, 80, 100]
+    #m_list = [0, 1, 2, 3, 4]
     popt = validator.run_rb_characterization(  
         m_list, shots=4000,
         plot_path=f"results/rb_decay_curve_teleport n={N_qubits}.png", 

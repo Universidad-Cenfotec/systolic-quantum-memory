@@ -137,7 +137,7 @@ Executes SQM ↔ SWAP comparative analysis using the AerSimulator backend with a
 R = 1              # Number of logical memory registers
 n = 1              # Qubits per register (quantum word width)
 c_max = 10         # Gate cost threshold
-t_max_ns = 1350    # Time threshold (nanoseconds)
+t_max_ns = 1000    # Time threshold (nanoseconds)
 shots = 4000       # Simulation shots per workload
 flow = 1           # 0 = measure memory registers, 1 = measure operation register
 

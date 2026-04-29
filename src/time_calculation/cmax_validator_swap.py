@@ -115,15 +115,33 @@ class CMaxValidator:
             raise ValueError(f"n_swaps must be >= 0, received: {n_swaps}")
 
         qc = QuantumCircuit(2 * self.N, self.N)
+
+        for i in range(self.N):
+            qc.x(i)
+            
+
         for _ in range(n_swaps):
             for i in range(self.N):
                 qc.cx(i, i + self.N)        # CNOT1
                 qc.cx(i + self.N, i)        # CNOT2
                 qc.cx(i, i + self.N)        # CNOT3
             qc.barrier()   # Prevents inter-SWAP optimization by transpiler
+       
+        # -- Determine which register holds the data after n_swaps ---------------
+        # Data starts in mem_0 (qubits 0..N-1) and ping-pongs with each SWAP.
+        #   n_swaps=0          : data in mem_0 (qubits 0..N-1)
+        #   n_swaps=1 (odd)    : data in q_work (qubits N..2N-1)
+        #   n_swaps=2 (even)   : data back in mem_0
+        if n_swaps % 2 == 0:
+            measure_qubits = range(self.N)            # mem_0
+            reg_label = "mem_0"
+        else:
+            measure_qubits = range(self.N, 2 * self.N) # q_work
+            reg_label = "q_work"
 
-        qc.measure(range(self.N), range(self.N))
-        # print(qc.draw(output="text"))  # Commented: Unicode encoding issues on Windows
+        qc.measure(measure_qubits, range(self.N))
+        print(f"    [circuit] n_swaps={n_swaps} -> measuring {reg_label}")
+        #print(qc.draw(output="text"))  # Disabled: Unicode issues on Windows cp1252
 
         # -- Hardware-Aware Qubit Mapping --------------------------------------
         # Use QubitMapper to guarantee per-bit topology allocation
@@ -159,7 +177,7 @@ class CMaxValidator:
 
         # Measure fidelity: count instances where all N qubits are in |0> state
         # Uses unified measurement parser for robust extraction (handles variable N)
-        target_state = "0" * self.N
+        target_state = "1" * self.N
         fidelity_count = 0
         
         for bitstring, count in counts.items():
@@ -446,9 +464,9 @@ if __name__ == "__main__":
     # BACKEND MODE: "default" = FakeKyiv simulator | "IBM" = real IBM hardware
     # =========================================================================
     backend_mode = "IBM"  # Change to "IBM" to run on real IBM hardware
- 
+  
     # 1. DEFINE THE ARCHITECTURE (N = Word width)
-    N_qubits = 1
+    N_qubits = 1 
 
     if backend_mode == "IBM":
         ibm_backend = get_ibm_backend("ibm_kingston")
@@ -458,8 +476,8 @@ if __name__ == "__main__":
 
     # -- Phase B.1: Complete RB characterization -------------------------------
     m_list = [0, 1, 2, 4, 6, 8, 10, 15, 20, 25, 30, 40, 50, 60, 80, 100]
-    #m_list = [2,4,8]
-    popt = validator.run_rb_characterization(m_list, shots=4000, plot_path = "results/rb_decay_curve_swap n="+ str(N_qubits) +".png")
+    #m_list = [0, 1, 2, 3, 4]
+    popt = validator.run_rb_characterization(m_list, shots=4000, plot_path = "results/rb_decay_curve_swap n="+ str(N_qubits) +".png") 
 
     # -- Phase B.2: Print results and validate model ---------------------------
     r_emp = validator.print_rb_results(popt)

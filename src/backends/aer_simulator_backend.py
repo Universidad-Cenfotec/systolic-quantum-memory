@@ -43,7 +43,7 @@ class AerSimulatorBackend(BackendInterface):
     # ALL values in nanoseconds for consistency with thermal_relaxation_error()
     DEFAULT_T1_NS = 192_566      # 192.566 us = 192566 ns
     DEFAULT_T2_NS = 35_887       # 35.887 us  = 35887 ns
-    DEFAULT_IDLE_TIME_NS = 1350  # 1.35 us = 1350 ns per identity gate unit
+    DEFAULT_IDLE_TIME_NS = 1000  # 1.35 us = 1350 ns per identity gate unit
 
     def __init__(
         self,

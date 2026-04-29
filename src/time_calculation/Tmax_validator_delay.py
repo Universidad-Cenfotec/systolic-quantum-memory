@@ -113,17 +113,14 @@ class TmaxValidatorDelay:
         # Initialise |1>^N
         for i in range(self.N):
             qc.x(i)
-            qc.h(i)
 
         # Apply delay (converted to backend dt units)
         if delay_ns > 0:
             for i in range(self.N):
                 qc.delay(int(delay_ns), i, unit='ns')
 
-        for i in range(self.N):
-            qc.h(i)
         qc.measure(range(self.N), range(self.N))
-
+        print(qc.draw(output="text"))   
         # Transpile & run (plain transpile -- no backend scheduling passes)
         qc_t = transpile(qc, optimization_level=0)
 
@@ -455,7 +452,7 @@ if __name__ == "__main__":
 
     popt = validator.run_delay_characterization(
         delay_list_ns,
-        shots=1024,
+        shots=4000,
         plot_path=f"results/rb_decay_curve_delay_H_N{N_qubits}.png",
     )
 

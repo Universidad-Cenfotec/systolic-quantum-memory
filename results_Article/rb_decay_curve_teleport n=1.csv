@@ -1,5 +1,5 @@
 RB Characterization Results (Multiple Teleportation Protocol)
-Timestamp,2026-04-23T20:21:26.194642
+Timestamp,2026-04-27T21:48:18.303340
 Backend,ibm_kingston
 Architecture,3 registers × 1 qubits = 3 total qubits
 Registers,"reg_A (ping), reg_B (pong), ancilla (Bell channel)"
@@ -8,26 +8,26 @@ Native Gate,CZ
 Protocol,"SystolicTeleportation (ping-pong, active reset)"
 
 Magesan Fit Parameters
-A (SPAM contrast),0.458245
-p (process decay per teleport),0.894440
-B (asymptote),0.554002
-r_empirical,0.052780
-p_teleport_theory,0.087806
+A (SPAM contrast),0.560766
+p (process decay per teleport),0.861767
+B (asymptote),0.450506
+r_empirical,0.069117
+p_teleport_theory,0.089644
 
 m (teleport cycles),F_emp (fidelity),F_fit (fitted)
-0,1.000000,1.012247
-1,0.970250,0.963875
-2,0.934000,0.920609
-4,0.851500,0.847296
-6,0.774500,0.788644
-8,0.747250,0.741722
-10,0.694750,0.704182
-15,0.647000,0.639977
-20,0.600000,0.603221
-25,0.585250,0.582179
-30,0.573500,0.570133
-40,0.553500,0.559289
-50,0.554750,0.555735
-60,0.556250,0.554570
-80,0.550250,0.554063
-100,0.559000,0.554009
+0,0.991500,1.011272
+1,0.938500,0.933756
+2,0.890500,0.866955
+4,0.762000,0.759778
+6,0.684000,0.680185
+8,0.621000,0.621075
+10,0.564500,0.577178
+15,0.493500,0.510710
+20,0.483500,0.479120
+25,0.457500,0.464105
+30,0.460500,0.456969
+40,0.470500,0.451966
+50,0.438000,0.450836
+60,0.445000,0.450580
+80,0.457500,0.450510
+100,0.457500,0.450506

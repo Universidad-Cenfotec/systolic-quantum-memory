@@ -22,9 +22,9 @@ from src.backends.aer_simulator_backend import AerSimulatorBackend
 # Compiler Configuration
 R = 1          # Number of memory registers
 n = 1          # Qubits per register (quantum word width)
-c_max = 10     # Gate cost threshold
-t_max_ns = 1350*1 # Time threshold (nanoseconds)
-
+c_max = 1    # Gate cost threshold
+t_max_ns = 1000000 # Time threshold (nanoseconds)
+ 
 # Simulation Configuration
 shots = 4000         # Number of simulation shots
 flow=1 # 0 = flow, 1 = memory
@@ -39,24 +39,74 @@ idle_time_ns = 1000  # Idle period duration (ns) - default: 7.0 μs
 # initial_state = 1: |1> target (X gate)
 # initial_state = 2: |+> superposition (H gate, fidelity target = |0>)
 # initial_state = 3: |-> superposition (X+H gates, fidelity target = |1>)
-initial_state = 1  # 0 = |0>, 1 = |1>, 2 = |+> (H), 3 = |-> (XH)
+initial_state = 0  # 0 = |0>, 1 = |1>, 2 = |+> (H), 3 = |-> (XH)
 
 # Test Workloads
 
-workload1 = ["WRITE_0", "IDLE_10", "READ_0"]
-workload2 = ["WRITE_0", "IDLE_20", "READ_0"]
-workload3 = ["WRITE_0", "IDLE_40", "READ_0"]
-workload4 = ["WRITE_0", "IDLE_80", "READ_0"]
-workload5 = ["WRITE_0", "IDLE_100", "READ_0",]
-workload6 = ["WRITE_0", "IDLE_150", "READ_0"]
-workload7 = ["WRITE_0", "IDLE_200", "READ_0"]
-workload8 = ["WRITE_0", "IDLE_300", "READ_0"]
-workload9 = ["WRITE_0", "IDLE_400", "READ_0"]
-workload10 = ["WRITE_0", "IDLE_500", "READ_0"]
-workload11 = ["WRITE_0", "IDLE_600", "READ_0"]
-workload12 = ["WRITE_0", "IDLE_700", "READ_0"]
-workload13 = ["WRITE_0", "IDLE_800", "READ_0"]
-workload14 = ["WRITE_0", "IDLE_900", "READ_0"]
+workload1 = ["READ_0", "READ_0", "WRITE_0", "READ_0"]
+
+workload2 = ["READ_0", "READ_0", "WRITE_0", "READ_0",
+             "READ_0", "READ_0", "WRITE_0", "READ_0"]
+
+workload3 = ["READ_0", "READ_0", "WRITE_0", "READ_0",
+             "READ_0", "READ_0", "WRITE_0", "READ_0",
+             "READ_0", "READ_0", "WRITE_0", "READ_0"]
+
+workload4 = ["READ_0", "READ_0", "WRITE_0", "READ_0",
+             "READ_0", "READ_0", "WRITE_0", "READ_0",
+             "READ_0", "READ_0", "WRITE_0", "READ_0",
+             "READ_0", "READ_0", "WRITE_0", "READ_0"]
+
+workload5 = ["READ_0", "READ_0", "WRITE_0", "READ_0",
+             "READ_0", "READ_0", "WRITE_0", "READ_0",
+             "READ_0", "READ_0", "WRITE_0", "READ_0",
+             "READ_0", "READ_0", "WRITE_0", "READ_0",
+             "READ_0", "READ_0", "WRITE_0", "READ_0"]
+
+workload6 = ["READ_0", "READ_0", "WRITE_0", "READ_0",
+             "READ_0", "READ_0", "WRITE_0", "READ_0",
+             "READ_0", "READ_0", "WRITE_0", "READ_0",
+             "READ_0", "READ_0", "WRITE_0", "READ_0",
+             "READ_0", "READ_0", "WRITE_0", "READ_0",
+             "READ_0", "READ_0", "WRITE_0", "READ_0"]
+
+workload7 = ["READ_0", "READ_0", "WRITE_0", "READ_0",
+             "READ_0", "READ_0", "WRITE_0", "READ_0",
+             "READ_0", "READ_0", "WRITE_0", "READ_0",
+             "READ_0", "READ_0", "WRITE_0", "READ_0",
+             "READ_0", "READ_0", "WRITE_0", "READ_0",
+             "READ_0", "READ_0", "WRITE_0", "READ_0",
+             "READ_0", "READ_0", "WRITE_0", "READ_0"]
+
+workload8 = ["READ_0", "READ_0", "WRITE_0", "READ_0",
+             "READ_0", "READ_0", "WRITE_0", "READ_0",
+             "READ_0", "READ_0", "WRITE_0", "READ_0",
+             "READ_0", "READ_0", "WRITE_0", "READ_0",
+             "READ_0", "READ_0", "WRITE_0", "READ_0",
+             "READ_0", "READ_0", "WRITE_0", "READ_0",
+             "READ_0", "READ_0", "WRITE_0", "READ_0",
+             "READ_0", "READ_0", "WRITE_0", "READ_0"]
+
+workload9 = ["READ_0", "READ_0", "WRITE_0", "READ_0",
+             "READ_0", "READ_0", "WRITE_0", "READ_0",
+             "READ_0", "READ_0", "WRITE_0", "READ_0",
+             "READ_0", "READ_0", "WRITE_0", "READ_0",
+             "READ_0", "READ_0", "WRITE_0", "READ_0",
+             "READ_0", "READ_0", "WRITE_0", "READ_0",
+             "READ_0", "READ_0", "WRITE_0", "READ_0",
+             "READ_0", "READ_0", "WRITE_0", "READ_0",
+             "READ_0", "READ_0", "WRITE_0", "READ_0"]
+
+workload10 = ["READ_0", "READ_0", "WRITE_0", "READ_0",
+              "READ_0", "READ_0", "WRITE_0", "READ_0",
+              "READ_0", "READ_0", "WRITE_0", "READ_0",
+              "READ_0", "READ_0", "WRITE_0", "READ_0",
+              "READ_0", "READ_0", "WRITE_0", "READ_0",
+              "READ_0", "READ_0", "WRITE_0", "READ_0",
+              "READ_0", "READ_0", "WRITE_0", "READ_0",
+              "READ_0", "READ_0", "WRITE_0", "READ_0",
+              "READ_0", "READ_0", "WRITE_0", "READ_0",
+              "READ_0", "READ_0", "WRITE_0", "READ_0"]
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Main Entry Point
@@ -117,10 +167,7 @@ def main():
         (f"Workload 8 {len(workload8)} instructions", workload8),
         (f"Workload 9 {len(workload9)} instructions", workload9),
         (f"Workload 10 {len(workload10)} instructions", workload10),
-        (f"Workload 11 {len(workload11)} instructions", workload11),
-        (f"Workload 12 {len(workload12)} instructions", workload12),
-        (f"Workload 13 {len(workload13)} instructions", workload13),
-        (f"Workload 14 {len(workload14)} instructions", workload14)
+
 
 
 

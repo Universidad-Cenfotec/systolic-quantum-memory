@@ -31,7 +31,7 @@ from src.backends.aer_simulator_backend import AerSimulatorBackend
 class SQMCompiler:
 
     # Constant: SWAP operation duration in nanoseconds (NISQ-level)
-    SWAP_TIME_NS = 1350
+    SWAP_TIME_NS = 1000
 
     def __init__(
         self,

@@ -482,7 +482,7 @@ if __name__ == "__main__":
     # Constant thermal relaxation error per ID gate (ALL in nanoseconds)
     T1_NS          = 192_566      # T1 relaxation -- 192.566 us = 192566 ns
     T2_NS          = 35_887       # T2 dephasing  -- 35.887 us  = 35887 ns
-    IDLE_TIME_NS   = 1350         # Duration of one ID idle period (ns)
+    IDLE_TIME_NS   = 1000         # Duration of one ID idle period (ns)
 
     if backend_mode == "IBM":
         ibm_backend = get_ibm_backend("ibm_kingston")

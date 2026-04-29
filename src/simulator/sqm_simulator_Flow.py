@@ -38,7 +38,7 @@ class SQMFlowCompiler:
     """
 
     # Constant: SWAP operation duration in nanoseconds (NISQ-level)
-    SWAP_TIME_NS = 1350
+    SWAP_TIME_NS = 1000
 
     def __init__(
         self,
@@ -335,7 +335,7 @@ class SQMFlowCompiler:
                 qc = self.work_phase.apply_swap(qc, source_reg, qr_work)
 
                 qc.barrier()
-                self._check_and_apply_tele_refresh(qc, logical_addr, gate_cost=1, time_dt=self.SWAP_TIME_NS)
+                #self._check_and_apply_tele_refresh(qc, logical_addr, gate_cost=1, #time_dt=self.SWAP_TIME_NS)
 
             elif instruction.startswith("WRITE_"):
                 address_binary = instruction.split("_")[1]
