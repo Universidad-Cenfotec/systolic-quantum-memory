@@ -59,12 +59,18 @@ class TmaxValidatorDelay:
 
     # -- Constructor ----------------------------------------------------------
 
-    def __init__(self, N: int = 1, backend=None) -> None:
+    def __init__(self, N: int = 1, backend=None, initial_state: int = 0) -> None:
         """
         Args:
             N: Number of qubits per register (word width).
             backend: Optional external backend (e.g. real IBM). If None, uses FakeKyiv.
+            initial_state: Initial qubit state and measurement basis.
+                0 = |0>  -> init |0>, measure fidelity vs '0'*N
+                1 = |1>  -> apply X, measure fidelity vs '1'*N
+                2 = |+>  -> apply H, apply H before measure, fidelity vs '0'*N
+                3 = |->  -> apply X+H, apply H before measure, fidelity vs '1'*N
         """
+        self.initial_state = initial_state
         self.N = N
         self.d = 2 ** self.N
         self.B_ideal = 1.0 / self.d      # Maximum-mixing floor (analogue of CMax)
@@ -95,45 +101,73 @@ class TmaxValidatorDelay:
         self.tau_fit:  float = 0.0
         self.B_fit:   float = 0.0
 
+        # 5. Log initial state
+        _state_labels = {0: "|0>", 1: "|1>", 2: "|+> (H)", 3: "|-> (XH)"}
+        state_label = _state_labels.get(initial_state, f"unknown({initial_state})")
+        print(f"[TmaxValidatorDelay] Initial state : {state_label}")
+
     # -- Empirical fidelity (noisy idle) --------------------------------------
 
     def empirical_fidelity(self, delay_ns: float, shots: int = 4000) -> float:
         """
-        Measure fidelity = P(|1...1>) after idling for *delay_ns* nanoseconds.
+        Measure fidelity after idling for *delay_ns* nanoseconds.
 
-        The circuit:
-            X^N -> delay(t) -> measure
+        State preparation & measurement basis follow ``self.initial_state``:
+
+            0 = |0>  : no init gates,  no pre-measurement gate,  target '0'*N
+            1 = |1>  : X gates,        no pre-measurement gate,  target '1'*N
+            2 = |+>  : H gates,        H before measurement,     target '0'*N
+            3 = |->  : X+H gates,      H before measurement,     target '1'*N
         """
         if delay_ns < 0:
             raise ValueError(f"delay_ns must be >= 0, received: {delay_ns}")
 
         qc = QuantumCircuit(self.N, self.N)
 
+        # ── State preparation ─────────────────────────────────────────────────
+        if self.initial_state == 0:
+            pass  # |0> is the default reset state; no gates needed
+        elif self.initial_state == 1:
+            for i in range(self.N):
+                qc.x(i)       # |0> -> |1>
+        elif self.initial_state == 2:
+            for i in range(self.N):
+                qc.h(i)       # |0> -> |+>
+        elif self.initial_state == 3:
+            for i in range(self.N):
+                qc.x(i)       # |0> -> |1>
+                qc.h(i)       # |1> -> |->
+        else:
+            raise ValueError(f"initial_state must be 0-3, received: {self.initial_state}")
 
-        # Initialise |1>^N
-        for i in range(self.N):
-            qc.x(i)
-
-        # Apply delay (converted to backend dt units)
+        # ── Idle delay ────────────────────────────────────────────────────────
         if delay_ns > 0:
             for i in range(self.N):
                 qc.delay(int(delay_ns), i, unit='ns')
 
+        # ── Basis rotation before measurement (superposition states) ──────────
+        # For |+> and |->: apply H to rotate back to computational basis
+        if self.initial_state in (2, 3):
+            for i in range(self.N):
+                qc.h(i)
+
         qc.measure(range(self.N), range(self.N))
-        print(qc.draw(output="text"))   
-        # Transpile & run (plain transpile -- no backend scheduling passes)
+        print(qc.draw(output="text"))
+
+        # ── Transpile & run ───────────────────────────────────────────────────
         qc_t = transpile(qc, optimization_level=0)
 
         if self.is_ibm:
-            # For IBM hardware, re-transpile against the real backend
             qc_t = transpile(qc, backend=self.backend, optimization_level=0)
             counts = run_on_ibm(qc_t, self.backend, shots=shots)
         else:
-            # Run on local AerSimulator with noise model
             job = self.simulator.run(qc_t, shots=shots)
             counts = job.result().get_counts()
 
-        target_state = "1" * self.N
+        # ── Target state selection ────────────────────────────────────────────
+        # states 0, 2 -> '0'*N  |  states 1, 3 -> '1'*N
+        target_state = ('1' * self.N) if self.initial_state in (1, 3) else ('0' * self.N)
+
         fidelity_count = 0
         for bitstring, count in counts.items():
             measured = bitstring.replace(" ", "")[-self.N:]
@@ -322,10 +356,14 @@ class TmaxValidatorDelay:
             label=f"Asymptote B = {B_fit:.3f}",
         )
 
+        _state_labels = {0: "|0>", 1: "|1>", 2: "|+> (H)", 3: "|-> (XH)"}
+        state_label = _state_labels.get(self.initial_state, f"state({self.initial_state})")
+        target_label = ('1' * self.N) if self.initial_state in (1, 3) else ('0' * self.N)
+
         ax.set_xlabel("Delay time (us)", fontsize=12)
-        ax.set_ylabel("F(t) -- |1> survival probability", fontsize=12)
+        ax.set_ylabel(f"F(t) -- P(|{target_label}>) survival probability", fontsize=12)
         ax.set_title(
-            f"Delay Decay Curve (N={self.N}, d={self.d})",
+            f"Delay Decay Curve (N={self.N}, d={self.d}, init={state_label})",
             fontsize=14, fontweight="bold",
         )
         ax.legend(fontsize=10)
@@ -433,27 +471,42 @@ if __name__ == "__main__":
     # =========================================================================
     backend_mode = "default"  # Change to "IBM" to run on real IBM hardware
 
+    # =========================================================================
+    # INITIAL STATE
+    #   0 = |0>  : qubit starts in |0>, fidelity measured vs |0>
+    #   1 = |1>  : qubit starts in |1> (X gate), fidelity measured vs |1>
+    #   2 = |+>  : qubit starts in |+> (H gate), H applied before measure,
+    #              fidelity measured vs |0>
+    #   3 = |->  : qubit starts in |-> (X+H gates), H applied before measure,
+    #              fidelity measured vs |1>
+    # =========================================================================
+    initial_state = 0  # 0 = |0>, 1 = |1>, 2 = |+> (H), 3 = |-> (XH)
+
     # 1. DEFINE THE ARCHITECTURE (N = Word width)
-    N_qubits = 1 
+    N_qubits = 1
     target_fidelity = 0.75
- 
+
+    _state_labels = {0: "|0>", 1: "|1>", 2: "|+> (H)", 3: "|-> (XH)"}
+    state_label = _state_labels.get(initial_state, f"unknown({initial_state})")
+    print(f"[Main] Running with initial_state={initial_state} ({state_label})")
+
     if backend_mode == "IBM":
         ibm_backend = get_ibm_backend("ibm_kingston")
-        validator = TmaxValidatorDelay(N=N_qubits, backend=ibm_backend)
+        validator = TmaxValidatorDelay(N=N_qubits, backend=ibm_backend, initial_state=initial_state)
     else:
-        validator = TmaxValidatorDelay(N=N_qubits)
+        validator = TmaxValidatorDelay(N=N_qubits, initial_state=initial_state)
 
     # -- Phase 1: Delay characterization (curve_fit) ---------------------------
     #    Define delay times directly in nanoseconds.
     delay_list_ns = [
         0, 500, 1_000, 2_000, 4_000, 6_000, 8_000,
         10_000, 15_000, 20_000, 30_000, 40_000, 50_000,
-        60_000, 80_000, 100_000, 120_000, 150_000, 200_000,400_000,600_000]
+        60_000, 80_000, 100_000, 120_000, 150_000, 200_000, 400_000, 600_000]
 
     popt = validator.run_delay_characterization(
         delay_list_ns,
         shots=4000,
-        plot_path=f"results/rb_decay_curve_delay_H_N{N_qubits}.png",
+        plot_path=f"results/rb_decay_curve_delay_state{initial_state}_N{N_qubits}.png",
     )
 
     # -- Phase 2: Print results and validate model ----------------------------
@@ -465,6 +518,6 @@ if __name__ == "__main__":
 
     # -- Phase 4: Extrapolation validation ------------------------------------
     t_test = 50_000  # ns
-    validator.run_extrapolation_test(t_test_ns=t_test)
+    #validator.run_extrapolation_test(t_test_ns=t_test)
     print(f"\n  Interpretation:")
     print(f"    If diff < 5%, the exponential model extrapolates correctly to t={t_test} ns.")

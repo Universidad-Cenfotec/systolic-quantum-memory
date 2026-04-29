@@ -24,82 +24,29 @@ from src.utils.hardware_results_processor import save_hardware_multi_workload_re
 # Compiler Configuration (Minimal for hardware - preserve quota)
 R = 1          # Number of memory registers (single register = minimal)
 n = 1          # Qubits per register (single qubit = fastest test)
-c_max = 1      # Gate cost threshold (aggressive refresh)
-t_max_ns = 1000000 # Time threshold (nanoseconds)
- 
+c_max = 10      # Gate cost threshold (aggressive refresh)
+t_max_ns = 55000 # Time threshold (nanoseconds)
+
 # Hardware Execution Configuration
 shots = 1024        # CRITICAL: Keep low to preserve IBM quota (10 min/month)
 
 flow=1 # 0 = flow, 1 = memory
 # Quantum State Configuration
-initial_state = 0  # 0 = |0>, 1 = |1>, 2 = |+> (H), 3 = |-> (XH)
+initial_state = 2  # 0 = |0>, 1 = |1>, 2 = |+> (H), 3 = |-> (XH)
 
 # Test Workloads (Multiple workloads for comparison)
 
-workload1 = ["READ_0", "READ_0", "WRITE_0", "READ_0"]
+workload1 = ["WRITE_0", "IDLE_10", "READ_0"]
+workload2 = ["WRITE_0", "IDLE_20", "READ_0"]
+workload3 = ["WRITE_0", "IDLE_40", "READ_0"]
+workload4 = ["WRITE_0", "IDLE_80", "READ_0"]
+workload5 = ["WRITE_0", "IDLE_100", "READ_0"]
+workload6 = ["WRITE_0", "IDLE_150", "READ_0"]
+workload7 = ["WRITE_0", "IDLE_200", "READ_0"]
+workload8 = ["WRITE_0", "IDLE_300", "READ_0"]
+workload9 = ["WRITE_0", "IDLE_400", "READ_0"]
+workload10 = ["WRITE_0", "IDLE_500", "READ_0"]
 
-workload2 = ["READ_0", "READ_0", "WRITE_0", "READ_0",
-             "READ_0", "READ_0", "WRITE_0", "READ_0"]
-
-workload3 = ["READ_0", "READ_0", "WRITE_0", "READ_0",
-             "READ_0", "READ_0", "WRITE_0", "READ_0",
-             "READ_0", "READ_0", "WRITE_0", "READ_0"]
-
-workload4 = ["READ_0", "READ_0", "WRITE_0", "READ_0",
-             "READ_0", "READ_0", "WRITE_0", "READ_0",
-             "READ_0", "READ_0", "WRITE_0", "READ_0",
-             "READ_0", "READ_0", "WRITE_0", "READ_0"]
-
-workload5 = ["READ_0", "READ_0", "WRITE_0", "READ_0",
-             "READ_0", "READ_0", "WRITE_0", "READ_0",
-             "READ_0", "READ_0", "WRITE_0", "READ_0",
-             "READ_0", "READ_0", "WRITE_0", "READ_0",
-             "READ_0", "READ_0", "WRITE_0", "READ_0"]
-
-workload6 = ["READ_0", "READ_0", "WRITE_0", "READ_0",
-             "READ_0", "READ_0", "WRITE_0", "READ_0",
-             "READ_0", "READ_0", "WRITE_0", "READ_0",
-             "READ_0", "READ_0", "WRITE_0", "READ_0",
-             "READ_0", "READ_0", "WRITE_0", "READ_0",
-             "READ_0", "READ_0", "WRITE_0", "READ_0"]
-
-workload7 = ["READ_0", "READ_0", "WRITE_0", "READ_0",
-             "READ_0", "READ_0", "WRITE_0", "READ_0",
-             "READ_0", "READ_0", "WRITE_0", "READ_0",
-             "READ_0", "READ_0", "WRITE_0", "READ_0",
-             "READ_0", "READ_0", "WRITE_0", "READ_0",
-             "READ_0", "READ_0", "WRITE_0", "READ_0",
-             "READ_0", "READ_0", "WRITE_0", "READ_0"]
-
-workload8 = ["READ_0", "READ_0", "WRITE_0", "READ_0",
-             "READ_0", "READ_0", "WRITE_0", "READ_0",
-             "READ_0", "READ_0", "WRITE_0", "READ_0",
-             "READ_0", "READ_0", "WRITE_0", "READ_0",
-             "READ_0", "READ_0", "WRITE_0", "READ_0",
-             "READ_0", "READ_0", "WRITE_0", "READ_0",
-             "READ_0", "READ_0", "WRITE_0", "READ_0",
-             "READ_0", "READ_0", "WRITE_0", "READ_0"]
-
-workload9 = ["READ_0", "READ_0", "WRITE_0", "READ_0",
-             "READ_0", "READ_0", "WRITE_0", "READ_0",
-             "READ_0", "READ_0", "WRITE_0", "READ_0",
-             "READ_0", "READ_0", "WRITE_0", "READ_0",
-             "READ_0", "READ_0", "WRITE_0", "READ_0",
-             "READ_0", "READ_0", "WRITE_0", "READ_0",
-             "READ_0", "READ_0", "WRITE_0", "READ_0",
-             "READ_0", "READ_0", "WRITE_0", "READ_0",
-             "READ_0", "READ_0", "WRITE_0", "READ_0"]
-
-workload10 = ["READ_0", "READ_0", "WRITE_0", "READ_0",
-              "READ_0", "READ_0", "WRITE_0", "READ_0",
-              "READ_0", "READ_0", "WRITE_0", "READ_0",
-              "READ_0", "READ_0", "WRITE_0", "READ_0",
-              "READ_0", "READ_0", "WRITE_0", "READ_0",
-              "READ_0", "READ_0", "WRITE_0", "READ_0",
-              "READ_0", "READ_0", "WRITE_0", "READ_0",
-              "READ_0", "READ_0", "WRITE_0", "READ_0",
-              "READ_0", "READ_0", "WRITE_0", "READ_0",
-              "READ_0", "READ_0", "WRITE_0", "READ_0"]
 # Set to int (1, 2, 3), list ([1,3], etc.), or None (all scenarios)
 # Examples:
 #   scenario = [1 ]         -> Run only Scenario 1
