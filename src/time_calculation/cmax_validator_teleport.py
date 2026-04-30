@@ -66,16 +66,22 @@ class CMaxValidatorTeleport:
 
     # -- Constructor ----------------------------------------------------------
 
-    def __init__(self, N: int = 1, backend=None) -> None:
+    def __init__(self, N: int = 1, backend=None, initial_state: int = 1) -> None:
         """
         Args:
             N: Word width (qubits per register). Total qubits = 3*N.
             backend: Optional external backend (e.g. real IBM). If None, uses FakeKyiv.
+            initial_state: Initial qubit state and measurement basis.
+                0 = |0⟩  -> init |0⟩, measure fidelity vs '0'*N
+                1 = |1⟩  -> apply X, measure fidelity vs '1'*N  (original behaviour)
+                2 = |+⟩  -> apply H, apply H before measure, fidelity vs '0'*N
+                3 = |-⟩  -> apply X+H, apply H before measure, fidelity vs '1'*N
         """
         # 0. Dynamic word width parameter
         self.N = N
         self.d = 2 ** self.N          # Hilbert-space dimension per register
         self.B_ideal = 1.0 / self.d   # Maximum-mixing asymptote
+        self.initial_state = initial_state
 
         # 1. Backend configuration
         if backend is not None:
@@ -104,6 +110,11 @@ class CMaxValidatorTeleport:
         self.p_fit:     float = 0.0
         self.B_fit:     float = 0.0
         self.r_empirico: float = 0.0
+
+        # 6. Log initial state
+        _state_labels = {0: "|0⟩", 1: "|1⟩", 2: "|+⟩ (H)", 3: "|-⟩ (XH)"}
+        state_label = _state_labels.get(initial_state, f"unknown({initial_state})")
+        print(f"[CMaxValidatorTeleport] Initial state : {state_label}")
 
     # -- Extraction of calibration parameters ----------------------------------
 
@@ -187,12 +198,23 @@ class CMaxValidatorTeleport:
 
         qc = QuantumCircuit(reg_A, reg_B, ancilla, cr_final)
 
-        # Initialise only the SOURCE register (reg_A) in |1>.
-        # reg_B (destination) must start in |0> for the Bell-pair generation
-        # inside the teleportation protocol to work correctly.
-        # The ancilla is also left in |0> (never initialised here).
-        for i in range(self.N):
-            qc.x(reg_A[i])
+        # ── State preparation on SOURCE register (reg_A) ─────────────────────
+        # reg_B (destination) always starts in |0⟩ for Bell-pair generation.
+        # The ancilla is also left in |0⟩ (never initialised here).
+        if self.initial_state == 0:
+            pass  # |0⟩ is the default reset state; no gates needed
+        elif self.initial_state == 1:
+            for i in range(self.N):
+                qc.x(reg_A[i])   # |0⟩ -> |1⟩
+        elif self.initial_state == 2:
+            for i in range(self.N):
+                qc.h(reg_A[i])   # |0⟩ -> |+⟩
+        elif self.initial_state == 3:
+            for i in range(self.N):
+                qc.x(reg_A[i])   # |0⟩ -> |1⟩
+                qc.h(reg_A[i])   # |1⟩ -> |-⟩
+        else:
+            raise ValueError(f"initial_state must be 0-3, received: {self.initial_state}")
 
         # -- Teleportation module (fresh instance to reset caches) -------------
         teleporter = SystolicTeleportation(name="teleport_validator")
@@ -230,6 +252,12 @@ class CMaxValidatorTeleport:
             final_reg = reg_A                  # even teleports: data back in A
 
         print(f"    [circuit] m={m_teleports} -> measuring {'reg_B' if final_reg is reg_B else 'reg_A'}")
+
+        # ── Basis rotation before measurement (superposition states) ───────────
+        # For |+⟩ and |-⟩: apply H to rotate back to computational basis
+        if self.initial_state in (2, 3):
+            for i in range(self.N):
+                qc.h(final_reg[i])
 
         # -- Final measurement on the register holding the state ---------------
         for i in range(self.N):
@@ -272,8 +300,10 @@ class CMaxValidatorTeleport:
             reverse_for_endianness=True,
         )
 
+        # ── Target state selection ─────────────────────────────────────────────
+        # states 0, 2 -> '0'*N  |  states 1, 3 -> '1'*N
+        target_state = ('1' * self.N) if self.initial_state in (1, 3) else ('0' * self.N)
         fidelity_count = 0
-        target_state = "1" * self.N
 
         for bitstring, count in counts.items():
             final_bits = MeasurementParser.extract_register_bits(
@@ -486,9 +516,13 @@ class CMaxValidatorTeleport:
                 label=f"Magesan fit: A={A_fit:.3f}, p={p_fit:.4f}, B={B_fit:.3f}")
         ax.axhline(y=B_fit, linestyle="--", color="gray", alpha=0.6,
                    label=f"Asymptote B = {B_fit:.3f}")
+        _state_labels = {0: "|0⟩", 1: "|1⟩", 2: "|+⟩ (H)", 3: "|-⟩ (XH)"}
+        state_label = _state_labels.get(self.initial_state, f"state({self.initial_state})")
+        target_label = ('1' * self.N) if self.initial_state in (1, 3) else ('0' * self.N)
+
         ax.set_xlabel("m  (number of teleportation cycles)", fontsize=13, fontweight='bold')
-        ax.set_ylabel("F(m)  – base-state survival probability", fontsize=13, fontweight='bold')
-        ax.set_title(f"Teleport-Only Decay Curve (N={self.N}, d={self.d})", 
+        ax.set_ylabel(f"F(m)  – P(|{target_label}⟩) survival probability", fontsize=13, fontweight='bold')
+        ax.set_title(f"Teleport-Only Decay Curve (N={self.N}, d={self.d}, init={state_label})",
                      fontsize=14, fontweight='bold')
         ax.legend(fontsize=11, loc='upper right')
         ax.grid(alpha=0.3, linestyle='--')
@@ -597,22 +631,37 @@ if __name__ == "__main__":
     # BACKEND MODE: "default" = FakeKyiv simulator | "IBM" = real IBM hardware
     # =========================================================================
     backend_mode = "IBM"  # Change to "IBM" to run on real IBM hardware
- 
+
+    # =========================================================================
+    # INITIAL STATE
+    #   0 = |0⟩  : qubit starts in |0⟩, fidelity measured vs |0⟩
+    #   1 = |1⟩  : qubit starts in |1⟩ (X gate), fidelity measured vs |1⟩
+    #   2 = |+⟩  : qubit starts in |+⟩ (H gate), H applied before measure,
+    #              fidelity measured vs |0⟩
+    #   3 = |-⟩  : qubit starts in |-⟩ (X+H gates), H applied before measure,
+    #              fidelity measured vs |1⟩
+    # =========================================================================
+    initial_state = 0  # 0 = |0⟩, 1 = |1⟩, 2 = |+⟩ (H), 3 = |-⟩ (XH)
+
     # 1. DEFINE THE ARCHITECTURE (N = Word width)
-    N_qubits = 1
- 
+    N_qubits = 1 
+
+    _state_labels = {0: "|0⟩", 1: "|1⟩", 2: "|+⟩ (H)", 3: "|-⟩ (XH)"}
+    state_label = _state_labels.get(initial_state, f"unknown({initial_state})")
+    print(f"[Main] Running with initial_state={initial_state} ({state_label})")
+
     if backend_mode == "IBM":
         ibm_backend = get_ibm_backend("ibm_kingston")
-        validator = CMaxValidatorTeleport(N=N_qubits, backend=ibm_backend)
+        validator = CMaxValidatorTeleport(N=N_qubits, backend=ibm_backend, initial_state=initial_state)
     else:
-        validator = CMaxValidatorTeleport(N=N_qubits)
+        validator = CMaxValidatorTeleport(N=N_qubits, initial_state=initial_state)
 
     # -- Phase B.1: Complete RB characterization (teleport-only) ---------------
     m_list = [0, 1, 2, 4, 6, 8, 10, 15, 20, 25, 30, 40, 50, 60, 80, 100]
     #m_list = [0, 1, 2, 3, 4]
-    popt = validator.run_rb_characterization(  
+    popt = validator.run_rb_characterization(
         m_list, shots=4000,
-        plot_path=f"results/rb_decay_curve_teleport n={N_qubits}.png", 
+        plot_path=f"results/rb_decay_curve_teleport_state{initial_state}_n{N_qubits}.png",
     )
 
     # -- Phase B.2: Print results and validate model ---------------------------
@@ -625,7 +674,7 @@ if __name__ == "__main__":
 
     # -- Phase B.4: Extrapolation validation (Magesan model vs empirical) ------
     x = 15
-    validator.run_extrapolation_test(n=x)
+    #validator.run_extrapolation_test(n=x)
     print(f"\n  Interpretation:")
     print(f"    If diff < 5%, the Magesan model extrapolates correctly to n={x}.")
     print(f"    r_emp={r_emp:.4f}  vs  p_teleport_theory={validator.p_teleport_teorico:.4f}")

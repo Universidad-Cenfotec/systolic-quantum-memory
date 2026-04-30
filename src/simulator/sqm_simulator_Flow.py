@@ -335,7 +335,7 @@ class SQMFlowCompiler:
                 qc = self.work_phase.apply_swap(qc, source_reg, qr_work)
 
                 qc.barrier()
-                #self._check_and_apply_tele_refresh(qc, logical_addr, gate_cost=1, #time_dt=self.SWAP_TIME_NS)
+                self._check_and_apply_tele_refresh(qc, logical_addr, gate_cost=1, time_dt=self.SWAP_TIME_NS)
 
             elif instruction.startswith("WRITE_"):
                 address_binary = instruction.split("_")[1]
@@ -494,7 +494,7 @@ class SQMFlowCompiler:
             print("[Transpile] Translating to hardware topology with seed=42...")
             
             initial_layout = self._get_initial_layout(qc_measured)
-            print(qc_measured.draw(output='text'))
+            #print(qc_measured.draw(output='text'))
             print("[Noise Model] Extracting noise characteristics...")
            
             qc_transpiled = transpile(

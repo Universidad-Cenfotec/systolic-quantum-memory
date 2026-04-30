@@ -152,7 +152,7 @@ class TmaxValidatorDelay:
                 qc.h(i)
 
         qc.measure(range(self.N), range(self.N))
-        print(qc.draw(output="text"))
+        #print(qc.draw(output="text"))
 
         # ── Transpile & run ───────────────────────────────────────────────────
         qc_t = transpile(qc, optimization_level=0)
@@ -469,7 +469,7 @@ if __name__ == "__main__":
     # =========================================================================
     # BACKEND MODE: "default" = FakeKyiv simulator | "IBM" = real IBM hardware
     # =========================================================================
-    backend_mode = "default"  # Change to "IBM" to run on real IBM hardware
+    backend_mode = "IBM"  # Change to "IBM" to run on real IBM hardware
 
     # =========================================================================
     # INITIAL STATE

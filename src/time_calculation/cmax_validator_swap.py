@@ -44,12 +44,22 @@ class CMaxValidator:
 
     # -- Constructor ----------------------------------------------------------
 
-    def __init__(self, N: int = 1, backend=None) -> None:
-       
+    def __init__(self, N: int = 1, backend=None, initial_state: int = 1) -> None:
+        """
+        Args:
+            N: Number of qubits per register (word width).
+            backend: Optional external backend (e.g. real IBM). If None, uses FakeKyiv.
+            initial_state: Initial qubit state and measurement basis.
+                0 = |0⟩  -> init |0⟩, measure fidelity vs '0'*N
+                1 = |1⟩  -> apply X, measure fidelity vs '1'*N  (original behaviour)
+                2 = |+⟩  -> apply H, apply H before measure, fidelity vs '0'*N
+                3 = |-⟩  -> apply X+H, apply H before measure, fidelity vs '1'*N
+        """
         # 0. Dynamic word width parameter
         self.N = N
         self.d = 2 ** self.N
         self.B_ideal = 1.0 / self.d
+        self.initial_state = initial_state
 
         # 1. Backend configuration
         #    If backend is provided externally (e.g. real IBM), use it directly.
@@ -79,6 +89,11 @@ class CMaxValidator:
         self.p_fit:     float = 0.0
         self.B_fit:     float = 0.0
         self.r_empirico: float = 0.0
+
+        # 6. Log initial state
+        _state_labels = {0: "|0⟩", 1: "|1⟩", 2: "|+⟩ (H)", 3: "|-⟩ (XH)"}
+        state_label = _state_labels.get(initial_state, f"unknown({initial_state})")
+        print(f"[CMaxValidator] Initial state : {state_label}")
 
     # -- Extraction of calibration parameters ----------------------------------
 
@@ -110,15 +125,35 @@ class CMaxValidator:
     # -- Empirical fidelity (noisy WorkPhase) ----------------------------------
 
     def empirical_fidelity(self, n_swaps: int, shots: int = 4000) -> float:
-       
+        """
+        Measure fidelity after n_swaps SWAP cycles.
+
+        State preparation & measurement basis follow ``self.initial_state``:
+            0 = |0⟩  : no init gates,  no pre-measurement gate,  target '0'*N
+            1 = |1⟩  : X gates,        no pre-measurement gate,  target '1'*N
+            2 = |+⟩  : H gates,        H before measurement,     target '0'*N
+            3 = |-⟩  : X+H gates,      H before measurement,     target '1'*N
+        """
         if n_swaps < 0:
             raise ValueError(f"n_swaps must be >= 0, received: {n_swaps}")
 
         qc = QuantumCircuit(2 * self.N, self.N)
 
-        for i in range(self.N):
-            qc.x(i)
-            
+        # ── State preparation ──────────────────────────────────────────────────
+        if self.initial_state == 0:
+            pass  # |0⟩ is the default reset state; no gates needed
+        elif self.initial_state == 1:
+            for i in range(self.N):
+                qc.x(i)       # |0⟩ -> |1⟩
+        elif self.initial_state == 2:
+            for i in range(self.N):
+                qc.h(i)       # |0⟩ -> |+⟩
+        elif self.initial_state == 3:
+            for i in range(self.N):
+                qc.x(i)       # |0⟩ -> |1⟩
+                qc.h(i)       # |1⟩ -> |-⟩
+        else:
+            raise ValueError(f"initial_state must be 0-3, received: {self.initial_state}")
 
         for _ in range(n_swaps):
             for i in range(self.N):
@@ -126,18 +161,24 @@ class CMaxValidator:
                 qc.cx(i + self.N, i)        # CNOT2
                 qc.cx(i, i + self.N)        # CNOT3
             qc.barrier()   # Prevents inter-SWAP optimization by transpiler
-       
+
         # -- Determine which register holds the data after n_swaps ---------------
         # Data starts in mem_0 (qubits 0..N-1) and ping-pongs with each SWAP.
         #   n_swaps=0          : data in mem_0 (qubits 0..N-1)
         #   n_swaps=1 (odd)    : data in q_work (qubits N..2N-1)
         #   n_swaps=2 (even)   : data back in mem_0
         if n_swaps % 2 == 0:
-            measure_qubits = range(self.N)            # mem_0
+            measure_qubits = list(range(self.N))            # mem_0
             reg_label = "mem_0"
         else:
-            measure_qubits = range(self.N, 2 * self.N) # q_work
+            measure_qubits = list(range(self.N, 2 * self.N)) # q_work
             reg_label = "q_work"
+
+        # ── Basis rotation before measurement (superposition states) ───────────
+        # For |+⟩ and |-⟩: apply H to rotate back to computational basis
+        if self.initial_state in (2, 3):
+            for i in measure_qubits:
+                qc.h(i)
 
         qc.measure(measure_qubits, range(self.N))
         print(f"    [circuit] n_swaps={n_swaps} -> measuring {reg_label}")
@@ -175,17 +216,17 @@ class CMaxValidator:
             job  = sim.run(qc_t, shots=shots)
             counts = job.result().get_counts()
 
-        # Measure fidelity: count instances where all N qubits are in |0> state
-        # Uses unified measurement parser for robust extraction (handles variable N)
-        target_state = "1" * self.N
+        # ── Target state selection ─────────────────────────────────────────────
+        # states 0, 2 -> '0'*N  |  states 1, 3 -> '1'*N
+        target_state = ('1' * self.N) if self.initial_state in (1, 3) else ('0' * self.N)
         fidelity_count = 0
-        
+
         for bitstring, count in counts.items():
             # Extract first N bits safely (handles spaces and format changes)
             measured_bits = MeasurementParser.extract_first_n_bits(bitstring, self.N)
             if measured_bits == target_state:
                 fidelity_count += count
-        
+
         return fidelity_count / shots
 
     # -- RB Characterization (Magesan) -----------------------------------------
@@ -364,9 +405,13 @@ class CMaxValidator:
                 label=f"Magesan fit: A={A_fit:.3f}, p={p_fit:.4f}, B={B_fit:.3f}")
         ax.axhline(y=B_fit, linestyle="--", color="gray", alpha=0.6,
                    label=f"Asymptote B = {B_fit:.3f}")
+        _state_labels = {0: "|0⟩", 1: "|1⟩", 2: "|+⟩ (H)", 3: "|-⟩ (XH)"}
+        state_label = _state_labels.get(self.initial_state, f"state({self.initial_state})")
+        target_label = ('1' * self.N) if self.initial_state in (1, 3) else ('0' * self.N)
+
         ax.set_xlabel("m  (number of SWAPs)", fontsize=12)
-        ax.set_ylabel("F(m)  - base state survival", fontsize=12)
-        ax.set_title(f"SWAP Decay Curve (N={self.N}, d={self.d})", 
+        ax.set_ylabel(f"F(m)  - P(|{target_label}⟩) survival probability", fontsize=12)
+        ax.set_title(f"SWAP Decay Curve (N={self.N}, d={self.d}, init={state_label})",
                      fontsize=14, fontweight='bold')
         ax.legend(fontsize=10)
         ax.grid(alpha=0.3)
@@ -464,20 +509,39 @@ if __name__ == "__main__":
     # BACKEND MODE: "default" = FakeKyiv simulator | "IBM" = real IBM hardware
     # =========================================================================
     backend_mode = "IBM"  # Change to "IBM" to run on real IBM hardware
-  
+
+    # =========================================================================
+    # INITIAL STATE
+    #   0 = |0⟩  : qubit starts in |0⟩, fidelity measured vs |0⟩
+    #   1 = |1⟩  : qubit starts in |1⟩ (X gate), fidelity measured vs |1⟩
+    #   2 = |+⟩  : qubit starts in |+⟩ (H gate), H applied before measure,
+    #              fidelity measured vs |0⟩
+    #   3 = |-⟩  : qubit starts in |-⟩ (X+H gates), H applied before measure,
+    #              fidelity measured vs |1⟩
+    # =========================================================================
+    initial_state = 0  # 0 = |0⟩, 1 = |1⟩, 2 = |+⟩ (H), 3 = |-⟩ (XH)
+
     # 1. DEFINE THE ARCHITECTURE (N = Word width)
-    N_qubits = 1 
+    N_qubits = 1
+    
+
+    _state_labels = {0: "|0⟩", 1: "|1⟩", 2: "|+⟩ (H)", 3: "|-⟩ (XH)"}
+    state_label = _state_labels.get(initial_state, f"unknown({initial_state})")
+    print(f"[Main] Running with initial_state={initial_state} ({state_label})")
 
     if backend_mode == "IBM":
         ibm_backend = get_ibm_backend("ibm_kingston")
-        validator = CMaxValidator(N=N_qubits, backend=ibm_backend)
+        validator = CMaxValidator(N=N_qubits, backend=ibm_backend, initial_state=initial_state)
     else:
-        validator = CMaxValidator(N=N_qubits)
+        validator = CMaxValidator(N=N_qubits, initial_state=initial_state)
 
     # -- Phase B.1: Complete RB characterization -------------------------------
     m_list = [0, 1, 2, 4, 6, 8, 10, 15, 20, 25, 30, 40, 50, 60, 80, 100]
     #m_list = [0, 1, 2, 3, 4]
-    popt = validator.run_rb_characterization(m_list, shots=4000, plot_path = "results/rb_decay_curve_swap n="+ str(N_qubits) +".png") 
+    popt = validator.run_rb_characterization(
+        m_list, shots=4000,
+        plot_path=f"results/rb_decay_curve_swap_state{initial_state}_n{N_qubits}.png",
+    )
 
     # -- Phase B.2: Print results and validate model ---------------------------
     r_emp = validator.print_rb_results(popt)
@@ -490,7 +554,7 @@ if __name__ == "__main__":
     # -- Phase B.4: Extrapolation validation (Magesan model vs empirical) ------
     # Change 'x' to compare the fitted model against a new measurement.
     x = 15
-    validator.run_extrapolation_test(n=x)
+    #validator.run_extrapolation_test(n=x)
     print(f"\n  Interpretation:")
     print(f"    If diff < 5%, the Magesan model extrapolates correctly to n={x}.")
     print(f"    r_emp={r_emp:.4f}  vs  p_swap_theory={validator.p_swap_teorico:.4f}")
