@@ -32,7 +32,7 @@ shots = 1024        # CRITICAL: Keep low to preserve IBM quota (10 min/month)
 
 flow=1 # 0 = flow, 1 = memory
 # Quantum State Configuration
-initial_state = 3  # 0 = |0>, 1 = |1>, 2 = |+> (H), 3 = |-> (XH)
+initial_state = 0  # 0 = |0>, 1 = |1>, 2 = |+> (H), 3 = |-> (XH)
 
 # Test Workloads (Multiple workloads for comparison)
 
