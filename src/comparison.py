@@ -24,8 +24,6 @@ from qiskit import QuantumCircuit
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.backends.backend_interface import BackendInterface
-from src.simulator.sqm_simulator import SQMCompiler
-from src.simulator.swap_simulator import SwapCompiler
 from src.simulator.sqm_simulator_Flow import SQMFlowCompiler
 from src.simulator.swap_simulator_Flow import SwapFlowCompiler
 from src.functions.qubit_mapper import QubitMapper
@@ -36,136 +34,8 @@ from src.utils.hardware_results_processor import save_hardware_comparison_result
 # Compiler Execution Functions
 # ══════════════════════════════════════════════════════════════════════════════
 
-def run_sqm_compiler(R: int, n: int, c_max: int, t_max_ns: float, 
-                     workload: List[str], shots: int, backend_manager: BackendInterface,
-                     initial_state: int = 0) -> Optional[Dict[str, Any]]:
-
-    # ──────────────────────────────────────────────────────────
-    # SEED INITIALIZATION - For global reproducibility
-    # ──────────────────────────────────────────────────────────
-    random.seed(42)
-    np.random.seed(42)
-    
-    print("\n" + "=" * 70)
-    state_label = "|1⟩" if initial_state == 1 else "|0⟩"
-    print(f"SQM Compiler - Dual-Register Memory with Quantum Teleportation")
-    print(f"Target state: {state_label}")
-    print("=" * 70)
-
-    # Create compiler with optional backend manager (Dependency Injection)
-    sqm = SQMCompiler(R=R, n=n, c_max=c_max, t_max_ns=t_max_ns, 
-                      backend_manager=backend_manager, initial_state=initial_state)
-
-    # Display workload
-    print(f"\n[Workload] Executing {len(workload)} instructions:")
-    for i, instr in enumerate(workload, 1):
-        print(f"  {i}. {instr}")
-
-    # Compile workload
-    circuit = sqm.compile_workload(workload)
-
-    print(f"\n[Circuit Metrics]")
-    print(f"  Qubits: {circuit.num_qubits}")
-    print(f"  Classical bits: {circuit.num_clbits}")
-    print(f"  Depth: {circuit.depth()}")
-    print(f"  Size: {circuit.size()}")
-
-    state = sqm.get_compiler_state()
-    print(f"\n[Compiler State]")
-    print(f"  Available physical qubits: {state['available_qubits']}")
-
-    print("\n" + "-" * 70)
-    print("SIMULATION PHASE")
-    print("-" * 70)
-
-    try:
-        # Execute via backend manager (new method name: execute)
-        results = sqm.execute(circuit, shots=shots)
-        
-        print(f"\n[SQM Results]")
-        print(f"  Fidelity: {results['fidelity']:.4f}")
-        print(f"  Total Shots: {results['total_shots']}")
-        print(f"  Top 5 outcomes:")
-        for state_str, count in list(results['counts'].items())[:5]:
-            print(f"    |{state_str}⟩: {count} shots")
-
-        # Include the qubit mapper for visualization
-        results['qubit_mapper'] = sqm.qubit_mapper
-        return results
-
-    except Exception as e:
-        print(f"[Error] SQM execution failed: {e}")
-        import traceback
-        traceback.print_exc()
-        return None
-
-
-def run_swap_compiler(R: int, n: int, c_max: int, t_max_ns: float,
-                     workload: List[str], shots: int, backend_manager: BackendInterface,
-                     initial_state: int = 0) -> Optional[Dict[str, Any]]:
-
-    # ──────────────────────────────────────────────────────────
-    # SEED INITIALIZATION - For global reproducibility
-    # ──────────────────────────────────────────────────────────
-    random.seed(42)
-    np.random.seed(42)
-    
-    print("\n" + "=" * 70)
-    state_label = "|1⟩" if initial_state == 1 else "|0⟩"
-    print(f"SWAP Compiler - Single-Register Memory (Baseline)")
-    print(f"Target state: {state_label}")
-    print("=" * 70)
-
-    # Create compiler with optional backend manager (Dependency Injection)
-    swap = SwapCompiler(R=R, n=n, c_max=c_max, t_max_ns=t_max_ns, 
-                        backend_manager=backend_manager, initial_state=initial_state)
-
-    # Display workload
-    print(f"\n[Workload] Executing {len(workload)} instructions:")
-    for i, instr in enumerate(workload, 1):
-        print(f"  {i}. {instr}")
-
-    # Compile workload
-    circuit = swap.compile_workload(workload)
-
-    print(f"\n[Circuit Metrics]")
-    print(f"  Qubits: {circuit.num_qubits}")
-    print(f"  Classical bits: {circuit.num_clbits}")
-    print(f"  Depth: {circuit.depth()}")
-    print(f"  Size: {circuit.size()}")
-
-    state = swap.get_compiler_state()
-    print(f"\n[Compiler State]")
-    print(f"  Available physical qubits: {state['available_qubits']}")
-
-    print("\n" + "-" * 70)
-    print("SIMULATION PHASE")
-    print("-" * 70)
-
-    try:
-        # Execute via backend manager (new method name: execute)
-        results = swap.execute(circuit, shots=shots)
-        
-        print(f"\n[SWAP Results]")
-        print(f"  Fidelity: {results['fidelity']:.4f}")
-        print(f"  Total Shots: {results['total_shots']}")
-        print(f"  Top 5 outcomes:")
-        for state_str, count in list(results['counts'].items())[:5]:
-            print(f"    |{state_str}⟩: {count} shots")
-
-        # Include the qubit mapper for visualization
-        results['qubit_mapper'] = swap.qubit_mapper
-        return results
-
-    except Exception as e:
-        print(f"[Error] SWAP execution failed: {e}")
-        import traceback
-        traceback.print_exc()
-        return None
-
-
 # ══════════════════════════════════════════════════════════════════════════════
-# Flow Compiler Execution Functions (Fidelity on Operation Register)
+# Compiler Execution Functions (Flow-based - Fidelity on Operation Register)
 # ══════════════════════════════════════════════════════════════════════════════
 
 def run_sqm_flow_compiler(R: int, n: int, c_max: int, t_max_ns: float, 
@@ -312,13 +182,13 @@ def analyze_workload(R: int, n: int, c_max: int, t_max_ns: float,
 
 
     # Run SWAP with injected backend
-    swap_results = run_swap_compiler(R=R, n=n, c_max=c_max, t_max_ns=t_max_ns,
+    swap_results = run_swap_flow_compiler(R=R, n=n, c_max=c_max, t_max_ns=t_max_ns,
                                      workload=workload, shots=shots, initial_state=initial_state,
                                      backend_manager=backend_manager)
     
 
     # Run SQM with injected backend
-    sqm_results = run_sqm_compiler(R=R, n=n, c_max=c_max, t_max_ns=t_max_ns,
+    sqm_results = run_sqm_flow_compiler(R=R, n=n, c_max=c_max, t_max_ns=t_max_ns,
                                      workload=workload, shots=shots, initial_state=initial_state,
                                      backend_manager=backend_manager)
 
@@ -791,7 +661,8 @@ def run_real_comparison(R: int, n: int, c_max: int, t_max_ns: float,
                 sqm_real = SQMFlowCompiler(R=R, n=n, c_max=c_max, t_max_ns=t_max_ns,
                                       backend_manager=backend_manager, initial_state=initial_state)
             else:
-                sqm_real = SQMCompiler(R=R, n=n, c_max=c_max, t_max_ns=t_max_ns,
+                # Flow is required - no non-Flow variant available
+                sqm_real = SQMFlowCompiler(R=R, n=n, c_max=c_max, t_max_ns=t_max_ns,
                                       backend_manager=backend_manager, initial_state=initial_state)
 
             filtered = [w for w in workload if not w.startswith("IDLE_5")]
@@ -838,12 +709,9 @@ def run_real_comparison(R: int, n: int, c_max: int, t_max_ns: float,
         print("Hypothesis: SQM fidelity > SWAP baseline (validates thesis)")
 
         try:
-            if flow == 1:
-                sqm_real = SQMFlowCompiler(R=R, n=n, c_max=c_max, t_max_ns=t_max_ns,
-                                      backend_manager=backend_manager, initial_state=initial_state)
-            else:
-                sqm_real = SQMCompiler(R=R, n=n, c_max=c_max, t_max_ns=t_max_ns,
-                                      backend_manager=backend_manager, initial_state=initial_state)
+            # Use Flow-based compiler (fidelity measured on operation register)
+            sqm_real = SQMFlowCompiler(R=R, n=n, c_max=c_max, t_max_ns=t_max_ns,
+                                  backend_manager=backend_manager, initial_state=initial_state)
 
             circuit_sqm_real = sqm_real.compile_workload(workload)
             print(f"\n[Circuit Generated]")

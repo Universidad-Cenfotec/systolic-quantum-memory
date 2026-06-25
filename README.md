@@ -30,20 +30,12 @@ SQM/
 │   │   └── work_phase.py                   # SystolicWorkPhase (NISQ SWAP)
 │   ├── simulator/                          # Quantum compilers & simulators
 │   │   ├── __init__.py
-│   │   ├── sqm_simulator.py               # SQMCompiler (fidelity on memory registers)
-│   │   ├── sqm_simulator_Flow.py           # SQMFlowCompiler (fidelity on operation register)
-│   │   ├── swap_simulator.py               # SwapCompiler (fidelity on memory registers)
+	│   │   ├── sqm_simulator_Flow.py           # SQMFlowCompiler (fidelity on operation register)
 │   │   └── swap_simulator_Flow.py          # SwapFlowCompiler (fidelity on operation register)
-│   ├── time_calculation/                   # RB characterization & threshold validators
+│   ├── time_calculation/                   # Thermal relaxation & threshold calculations
 │   │   ├── __init__.py
 │   │   ├── ibm_backend_helper.py           # Shared IBM backend + SamplerV2 utilities
-│   │   ├── tmax_calculator.py              # Passive desgaste threshold (analytical)
-│   │   ├── Tmax_validator_delay.py         # Passive desgaste via native delay() instructions
-│   │   ├── tmax_validator_Id.py            # Passive desgaste via identity gates + thermal noise
-│   │   ├── cmax_validator_sqm.py           # Active desgaste (SQM + SystolicTeleportation)
-│   │   ├── cmax_validator_swap.py          # Active desgaste (SWAP pairs)
-│   │   ├── cmax_validator_teleport.py      # Active desgaste (teleportation only, ping-pong)
-│   │   └── cmax_validator_not.py           # Active desgaste (NOT gate pairs)
+│   │   └── tmax_calculator.py              # Passive desgaste threshold (analytical)
 │   └── utils/                              # Shared utility modules
 │       ├── __init__.py
 │       ├── measurement_parser.py           # MeasurementParser (endianness-aware bit extraction)
@@ -121,6 +113,173 @@ python main.py
 ### 5. Run Hardware Experiment (IBM Quantum)
 ```powershell
 python main_hardware_experiment.py
+```
+
+---
+
+## Configuration System (YAML-Based)
+
+The project uses **YAML configuration files** to manage all experiment parameters. This replaces the previous hardcoded configuration approach and enables easy experiment reproducibility and sharing.
+
+### Configuration Files
+
+**`default.yaml`** — Primary configuration file (version-controlled)
+- Loaded automatically when running `python main.py`
+- Contains all default parameters for simulator and hardware execution
+- Organized into sections: `global`, `simulator`, `hardware`, `workloads`, `output`, `advanced`
+
+**`config.example.yaml`** — Example/template configuration
+- Shows typical usage patterns
+- Demonstrates parameter ranges and settings
+- Copy to create custom experiment configurations
+
+### Configuration Structure
+
+#### Global Settings
+```yaml
+global:
+  backend: simulator              # 'simulator' or 'hardware'
+  seed: null                      # Set to integer for reproducibility
+```
+
+#### Simulator Configuration
+```yaml
+simulator:
+  compiler:
+    R: 1                          # Memory registers (1-3 typical)
+    n: 1                          # Qubits per register (1-3)
+    c_max: 10                     # Gate cost threshold
+    t_max_ns: 1000000             # Time threshold (nanoseconds)
+  
+  execution:
+    shots: 4000                   # Simulation shots per workload
+    initial_state: 0              # 0=|0⟩, 1=|1⟩, 2=|+⟩, 3=|−⟩
+    workload_type: standard       # 'standard', 'delay', or 'custom'
+  
+  thermal:
+    use_default: true             # Use FakeKyiv defaults (true) or custom
+    T1_ns: 149149                 # T1 relaxation time (nanoseconds)
+    T2_ns: 38194                  # T2 dephasing time (nanoseconds)
+    idle_time_ns: 1000            # Idle period duration (nanoseconds)
+```
+
+#### Hardware Configuration
+```yaml
+hardware:
+  backend_name: ibm_kingston      # IBM backend name
+  channel: ibm_quantum_platform   # 'ibm_quantum_platform' or 'ibm_cloud'
+  
+  compiler:
+    R: 1                          # Hardware register count
+    n: 1                          # Hardware qubits per register
+    c_max: 1                      # Gate cost threshold
+    t_max_ns: 1000000             # Time threshold
+  
+  execution:
+    shots: 1000                   # Hardware shots (keep low for quota)
+    initial_state: 0              # Initial quantum state
+    workload_type: standard       # Workload type
+    scenarios: "1,3"              # Scenarios to run (1, 2, 3, or all)
+```
+
+#### Workload Configuration
+```yaml
+workloads:
+  standard:
+    description: Standard read-write patterns
+    count: 10                     # Number of random workloads
+  
+  delay:
+    description: IDLE delay sweep
+    delays_ns: [10, 20, 40, 80]   # Delay values (nanoseconds)
+  
+  custom:
+    description: Custom workloads
+    workloads:
+      - name: "Simple pattern"
+        instructions: ["WRITE_0", "READ_0"]
+      - name: "Complex pattern"
+        instructions: ["WRITE_0", "IDLE_100", "READ_0"]
+```
+
+#### Output Configuration
+```yaml
+output:
+  results_dir: results/           # Directory for plots
+  save_csv: true                  # Export CSV data
+  save_plots: true                # Export PNG plots
+  plot_format: png                # 'png' or 'pdf'
+  verbose: true                   # Console output detail level
+```
+
+### Using Configuration Files
+
+#### Run with Default Configuration
+```powershell
+python main.py
+```
+This loads `default.yaml` automatically from the project root.
+
+#### Use Custom Configuration File
+```powershell
+python main.py --config config.experiment1.yaml
+```
+
+#### Override Configuration Parameters via CLI
+CLI arguments override YAML settings. Examples:
+```powershell
+# Override memory registers and shots
+python main.py --R 2 --n 1 --shots 8000
+
+# Run delay workload sweep instead of standard
+python main.py --workload delay
+
+# Run hardware mode (overrides global.backend setting)
+python main.py --backend hardware --backend_name ibm_heureka
+
+# Run specific scenarios on hardware
+python main.py --backend hardware --scenario 1,3
+```
+
+#### Combine Custom Config + Parameter Overrides
+```powershell
+python main.py --config custom.yaml --shots 16000 --workload delay
+```
+Loads `custom.yaml` then overrides shots and workload type.
+
+### Configuration Priority
+
+When running the program, configuration is applied in this order (later overrides earlier):
+1. **Defaults in code** (hardcoded fallbacks)
+2. **YAML file** (default.yaml or specified via --config)
+3. **CLI arguments** (highest priority)
+
+This allows flexible experimentation: set permanent defaults in YAML, temporary overrides on CLI.
+
+### Example Workflows
+
+**Standard SQM vs SWAP comparison:**
+```powershell
+python main.py
+```
+
+**Long delay sweep (custom delays):**
+Create `config.delay-study.yaml`:
+```yaml
+global:
+  backend: simulator
+simulator:
+  execution:
+    workload_type: delay
+workloads:
+  delay:
+    delays_ns: [1, 5, 10, 20, 50, 100, 200, 500, 1000]
+```
+Run: `python main.py --config config.delay-study.yaml`
+
+**Hardware experiment with high shot count:**
+```powershell
+python main.py --backend hardware --shots 1024 --scenario 1,3
 ```
 
 ---
@@ -212,16 +371,15 @@ The backend layer uses **dependency injection**: backends are created in `main.p
 
 ### Compilers & Simulators (`src/simulator/`)
 
-| Module | Class | Fidelity Target | Description |
-|--------|-------|-----------------|-------------|
-| `sqm_simulator.py` | `SQMCompiler` | Memory registers | Dual-register + teleportation + QPC odometer |
-| `sqm_simulator_Flow.py` | `SQMFlowCompiler` | Operation register | Same compilation, fidelity on `q_work` |
-| `swap_simulator.py` | `SwapCompiler` | Memory registers | Single-register baseline + SWAP gates |
-| `swap_simulator_Flow.py` | `SwapFlowCompiler` | Operation register | Same compilation, fidelity on `q_work` |
+| Module | Class | Description |
+|--------|-------|-------------|
+| `sqm_simulator_Flow.py` | `SQMFlowCompiler` | Dual-register + teleportation + QPC odometer; fidelity on operation register |
+| `swap_simulator_Flow.py` | `SwapFlowCompiler` | Single-register baseline + SWAP gates; fidelity on operation register |
 
-**Memory vs Flow modes:**
-- **Memory mode** (`flow=0`): Measures fidelity on the memory registers where data is stored at rest
+**Flow mode (active):**
 - **Flow mode** (`flow=1`): Measures fidelity on the operation register (`q_work`) — evaluates the quantum state "in transit"
+- Provides higher-fidelity measurements by avoiding memory register interference
+- ONLY non-Flow variant currently supported (simplification post-Phase 1 consolidation)
 
 **Superposition state support:**
 | `initial_state` | State | Preparation | Measurement target |

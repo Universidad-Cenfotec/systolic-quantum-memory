@@ -18,3 +18,4 @@ networkx==3.3                   # Graph algorithms & circuit topology analysis
 # ── Visualization ────────────────────────────────────────────
 matplotlib==3.9.2               # Plots, histograms, fidelity curves
 pylatexenc==2.10                # LaTeX-style circuit rendering in Qiskit
+pyyaml>=6.0.3
