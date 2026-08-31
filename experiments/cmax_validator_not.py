@@ -16,13 +16,13 @@ from qiskit_ibm_runtime.fake_provider import FakeKyiv
 try:
     from src.functions.qubit_mapper import QubitMapper
     from src.utils.measurement_parser import MeasurementParser
-    from src.time_calculation.ibm_backend_helper import get_ibm_backend, run_on_ibm
+    from experiments.utils.ibm_backend_helper import get_ibm_backend, run_on_ibm
 except ModuleNotFoundError:
     # Add parent directory to path for direct script execution
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
     from src.functions.qubit_mapper import QubitMapper
     from src.utils.measurement_parser import MeasurementParser
-    from src.time_calculation.ibm_backend_helper import get_ibm_backend, run_on_ibm
+    from experiments.utils.ibm_backend_helper import get_ibm_backend, run_on_ibm
 
 
 # =============================================================================
@@ -445,7 +445,7 @@ if __name__ == "__main__":
     # =========================================================================
     # BACKEND MODE: "default" = FakeKyiv simulator | "IBM" = real IBM hardware
     # =========================================================================
-    backend_mode = "IBM"  # Change to "IBM" to run on real IBM hardware
+    backend_mode = "default"  # Change to "IBM" to run on real IBM hardware
 
     # 1. DEFINE THE ARCHITECTURE (N = Word width)
     N_qubits = 1

@@ -14,11 +14,11 @@ from qiskit_aer.noise import NoiseModel, thermal_relaxation_error
 from qiskit_ibm_runtime.fake_provider import FakeKyiv
 
 try:
-    from src.time_calculation.ibm_backend_helper import get_ibm_backend, run_on_ibm
+    from experiments.utils.ibm_backend_helper import get_ibm_backend, run_on_ibm
 except ModuleNotFoundError:
     import sys
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
-    from src.time_calculation.ibm_backend_helper import get_ibm_backend, run_on_ibm
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+    from experiments.utils.ibm_backend_helper import get_ibm_backend, run_on_ibm
 
 
 # =============================================================================

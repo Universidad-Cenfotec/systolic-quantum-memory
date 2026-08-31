@@ -30,7 +30,7 @@ class AerSimulatorBackend(BackendInterface):
     simulator : AerSimulator
         Qiskit Aer simulator with MPS method
     time_idle_ns : float
-        Duration of one idle unit in nanoseconds (7000 ns = 7 μs per identity gate)
+        Duration of one idle unit in nanoseconds (7000 ns = 7 us per identity gate)
     t1_ns : float
         T1 relaxation time in nanoseconds
     t2_ns : float
@@ -114,7 +114,7 @@ class AerSimulatorBackend(BackendInterface):
         )
 
         print(f"[AerSimulatorBackend] Initialized with FakeKyiv device")
-        print(f"[AerSimulatorBackend] Thermal relaxation: T1={self.t1_ns/1000:.1f}μs, T2={self.t2_ns/1000:.1f}μs")
+        print(f"[AerSimulatorBackend] Thermal relaxation: T1={self.t1_ns/1000:.1f}us, T2={self.t2_ns/1000:.1f}us")
         print(f"[AerSimulatorBackend] Idle period: {self._time_idle_ns} ns per unit")
         print(f"[AerSimulatorBackend] Simulator method: {method} with {num_physical_qubits} qubits")
 

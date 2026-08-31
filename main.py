@@ -72,15 +72,22 @@ def generate_workloads_from_config(config: Dict[str, Any], workload_type: str) -
     if workload_type == "standard":
         workloads = []
         count = workload_cfg['standard']['count']
+        multiplier = workload_cfg['standard'].get('multiplier', 1)
+        
         for i in range(1, count + 1):
-            read_count = 2 * i
+            # Single mode: increment by multiplier for each workload
+            # Workload i has: READ_0 (i*multiplier times) + WRITE_0 + READ_0 (i*multiplier times) + READ_0
+            read_count = multiplier * i
+            total_instr = (multiplier * i) + 1 + (multiplier * i) + 1  # READ + WRITE + READ + READ
+            label = f"Workload {i} ({total_instr} instr)"
+            
             workload = (
                 ["READ_0"] * read_count +
                 ["WRITE_0"] +
                 ["READ_0"] * read_count +
                 ["READ_0"]
             )
-            workloads.append((f"Workload {i} ({len(workload)} instr)", workload))
+            workloads.append((label, workload))
         return workloads
     
     elif workload_type == "delay":

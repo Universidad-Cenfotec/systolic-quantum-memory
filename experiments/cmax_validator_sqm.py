@@ -19,14 +19,14 @@ try:
     from src.functions.qubit_mapper import QubitMapper
     from src.functions.teleportation import SystolicTeleportation
     from src.utils.measurement_parser import MeasurementParser
-    from src.time_calculation.ibm_backend_helper import get_ibm_backend, run_on_ibm
+    from experiments.utils.ibm_backend_helper import get_ibm_backend, run_on_ibm
 except ModuleNotFoundError:
     # Add parent directory to path for direct script execution
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
     from src.functions.qubit_mapper import QubitMapper
     from src.functions.teleportation import SystolicTeleportation
     from src.utils.measurement_parser import MeasurementParser
-    from src.time_calculation.ibm_backend_helper import get_ibm_backend, run_on_ibm
+    from experiments.utils.ibm_backend_helper import get_ibm_backend, run_on_ibm
 
 
 # =============================================================================

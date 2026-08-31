@@ -335,7 +335,7 @@ class SQMFlowCompiler:
                 qc = self.work_phase.apply_swap(qc, source_reg, qr_work)
 
                 qc.barrier()
-                self._check_and_apply_tele_refresh(qc, logical_addr, gate_cost=1, time_dt=self.SWAP_TIME_NS)
+                #self._check_and_apply_tele_refresh(qc, logical_addr, gate_cost=1, time_dt=self.SWAP_TIME_NS)
 
             elif instruction.startswith("WRITE_"):
                 address_binary = instruction.split("_")[1]
@@ -356,21 +356,7 @@ class SQMFlowCompiler:
                 qc.barrier()
                 self._check_and_apply_tele_refresh(qc, logical_addr, gate_cost=1, time_dt=self.SWAP_TIME_NS)
 
-            elif instruction.startswith("WORKING_"):
-                # WORKING instruction: WORKING_# where # is number of X-gate pairs
-                # Each pair is 2 X gates, so WORKING_1 = 2X, WORKING_3 = 6X
-                num_pairs = int(instruction.split("_")[1])
-                num_x_gates = 2 * num_pairs
-                
-                print(f"    -> WORKING phase: Applying {num_x_gates} X gates to q_work ({num_pairs} pairs)")
-                
-                # Apply X gates to all qubits in work register
-                for _ in range(num_x_gates):
-                    for qubit in qr_work:
-                        qc.x(qubit)
-                
-                qc.barrier()  # Prevent inter-SWAP optimization
-                # WORKING phase does not trigger refresh (pure operation phase, no time cost)
+          
 
             else:
                 print(f"  [WARNING] Unknown instruction: {instruction}")

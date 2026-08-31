@@ -469,10 +469,45 @@ def run_full_comparison(R: int, n: int, c_max: int, t_max_ns: float,
         os.makedirs(data_dir, exist_ok=True)
         csv_path = os.path.join(data_dir, f'comparison_results_{timestamp}.csv')
         
+        # Extract backend information
+        backend_info = {
+            'type': 'Unknown',
+            'T1_ns': 'N/A',
+            'T2_ns': 'N/A',
+            'idle_time_ns': 'N/A'
+        }
+        
+        if backend_manager is not None:
+            # Try to get backend info from the backend manager
+            if hasattr(backend_manager, 't1_ns'):
+                backend_info['T1_ns'] = backend_manager.t1_ns
+            if hasattr(backend_manager, 't2_ns'):
+                backend_info['T2_ns'] = backend_manager.t2_ns
+            if hasattr(backend_manager, 'idle_time_ns'):
+                backend_info['idle_time_ns'] = backend_manager.idle_time_ns
+            
+            # Get backend type
+            backend_class_name = backend_manager.__class__.__name__
+            if 'Aer' in backend_class_name or 'Simulator' in backend_class_name:
+                backend_info['type'] = 'AerSimulator'
+            elif 'Hardware' in backend_class_name or 'IBM' in backend_class_name:
+                backend_info['type'] = 'IBMHardware'
+            else:
+                backend_info['type'] = backend_class_name
+        
         with open(csv_path, 'w', newline='') as csvfile:
             writer = csv.writer(csvfile)
             
-            # Header with experiment parameters
+            # Backend Configuration section
+            writer.writerow(['BACKEND CONFIGURATION'])
+            writer.writerow(['Parameter', 'Value'])
+            writer.writerow(['Backend Type', backend_info['type']])
+            writer.writerow(['T1 (Relaxation Time)', f'{backend_info["T1_ns"]} ns'])
+            writer.writerow(['T2 (Dephasing Time)', f'{backend_info["T2_ns"]} ns'])
+            writer.writerow(['Idle Time', f'{backend_info["idle_time_ns"]} ns'])
+            writer.writerow([])
+            
+            # Experiment parameters section
             writer.writerow(['EXPERIMENT PARAMETERS'])
             writer.writerow(['Parameter', 'Value'])
             writer.writerow(['R (Logical Addresses)', R])
@@ -505,10 +540,19 @@ def run_full_comparison(R: int, n: int, c_max: int, t_max_ns: float,
         
         print(f"✓ CSV saved: {csv_path}")
         
-        # Add summary row to CSV (with experiment parameters)
+        # Add summary row to CSV (with experiment parameters and backend info)
         summary_path = os.path.join(data_dir, f'comparison_summary_{timestamp}.csv')
         with open(summary_path, 'w', newline='') as csvfile:
             writer = csv.writer(csvfile)
+            
+            # Backend Configuration section
+            writer.writerow(['BACKEND CONFIGURATION'])
+            writer.writerow(['Parameter', 'Value'])
+            writer.writerow(['Backend Type', backend_info['type']])
+            writer.writerow(['T1 (Relaxation Time)', f'{backend_info["T1_ns"]} ns'])
+            writer.writerow(['T2 (Dephasing Time)', f'{backend_info["T2_ns"]} ns'])
+            writer.writerow(['Idle Time', f'{backend_info["idle_time_ns"]} ns'])
+            writer.writerow([])
             
             # Experiment Parameters section
             writer.writerow(['EXPERIMENT PARAMETERS'])
@@ -609,12 +653,10 @@ def run_real_comparison(R: int, n: int, c_max: int, t_max_ns: float,
         print("Hypothesis: Lowest fidelity (baseline for comparison)")
 
         try:
-            if flow == 1:
-                swap = SwapFlowCompiler(R=R, n=n, c_max=c_max, t_max_ns=t_max_ns,
+           
+            swap = SwapFlowCompiler(R=R, n=n, c_max=c_max, t_max_ns=t_max_ns,
                                    backend_manager=backend_manager, initial_state=initial_state)
-            else:
-                swap = SwapCompiler(R=R, n=n, c_max=c_max, t_max_ns=t_max_ns,
-                                   backend_manager=backend_manager, initial_state=initial_state)
+
 
             circuit_swap = swap.compile_workload(workload)
             print(f"\n[Circuit Generated]")
@@ -657,13 +699,10 @@ def run_real_comparison(R: int, n: int, c_max: int, t_max_ns: float,
         print("Hypothesis: SQM fidelity > SWAP baseline (validates thesis)")
 
         try:
-            if flow == 1:
-                sqm_real = SQMFlowCompiler(R=R, n=n, c_max=c_max, t_max_ns=t_max_ns,
+            
+            sqm_real = SQMFlowCompiler(R=R, n=n, c_max=c_max, t_max_ns=t_max_ns,
                                       backend_manager=backend_manager, initial_state=initial_state)
-            else:
-                # Flow is required - no non-Flow variant available
-                sqm_real = SQMFlowCompiler(R=R, n=n, c_max=c_max, t_max_ns=t_max_ns,
-                                      backend_manager=backend_manager, initial_state=initial_state)
+     
 
             filtered = [w for w in workload if not w.startswith("IDLE_5")]
             circuit_sqm_real = sqm_real.compile_workload(filtered       )

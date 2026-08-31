@@ -25,12 +25,12 @@ simulator:
   # Simulation parameters
   execution:
     shots: 1024                         # Number of shots
-    initial_state: 0                    # 0=|0>, 1=|1>, 2=|+>, 3=|->
-    workload_type: custom             # Options: standard, delay, custom
+    initial_state: 1                    # 0=|0>, 1=|1>, 2=|+>, 3=|->
+    workload_type: standard             # Options: standard, delay, custom
   
   # Thermal parameters (quantum noise model)
   thermal:
-    use_default: true                   # Use default IBM values
+    use_default: false                   # Use default IBM values
     T1_ns: 149149                       # T1 relaxation time (nanoseconds)
     T2_ns: 38194                        # T2 dephasing time (nanoseconds)
     idle_time_ns: 1000                  # Idle period duration (nanoseconds)
@@ -62,9 +62,10 @@ hardware:
 # ============================================================================
 workloads:
   standard:
-    description: Read-Write patterns of increasing complexity
-    count: 10
-    # Auto-generated: READ_0 (2*i times) + WRITE_0 + READ_0 (2*i times) + READ_0
+    description: Read-Write patterns with configurable multiplier
+    count: 10                            # Number of workloads to generate
+    multiplier: 10                       # Increment multiplier
+    # Auto-generated: Each workload i has READ_0 (i*multiplier times) + WRITE_0 + READ_0 (i*multiplier times) + READ_0
   
   delay:
     description: IDLE delay sweep

@@ -5,7 +5,7 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.time_calculation.cmax_validator_sqm import CMaxValidator
+from experiments.cmax_validator_sqm import CMaxValidator
 
 def test_cmax_validator_integration():
     """Test that cmax_validator_sqm.py works with new unified parser."""

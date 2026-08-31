@@ -12,11 +12,11 @@ import math
 from qiskit_ibm_runtime.fake_provider import FakeKyiv
 
 try:
-    from src.time_calculation.ibm_backend_helper import get_ibm_backend
+    from experiments.utils.ibm_backend_helper import get_ibm_backend
 except ModuleNotFoundError:
     import os, sys
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
-    from src.time_calculation.ibm_backend_helper import get_ibm_backend
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+    from experiments.utils.ibm_backend_helper import get_ibm_backend
 
 
 class TMaxCalculator:
@@ -108,12 +108,12 @@ class TMaxCalculator:
         print(f"  Target Fidelity:    {self.target_fidelity:.2f}")
         print(f"  Safety Percentile:  {self.safety_percentile}th percentile (worst-case)")
         print(f"\nWorst-Case Coherence Times (Percentile {self.safety_percentile}):")
-        print(f"  T1 (Amplitude Damping):  {t1_worst_us:.3f} μs ({self.t1_worst:.0f} ns)")
-        print(f"  T2 (Phase Damping):      {t2_worst_us:.3f} μs ({self.t2_worst:.0f} ns)")
+        print(f"  T1 (Amplitude Damping):  {t1_worst_us:.3f} us ({self.t1_worst:.0f} ns)")
+        print(f"  T2 (Phase Damping):      {t2_worst_us:.3f} us ({self.t2_worst:.0f} ns)")
         print(f"\nCritical Limiting Time:")
-        print(f"  T_critical:  {self.t_critical:.0f} ns ({self.t_critical/1000:.3f} μs)")
+        print(f"  T_critical:  {self.t_critical:.0f} ns ({self.t_critical/1000:.3f} us)")
         print(f"\nMaximum Idle Time (Tmax):")
-        print(f"  T_MAX:  {tmax:.0f} ns ({tmax_us:.3f} μs)")
+        print(f"  T_MAX:  {tmax:.0f} ns ({tmax_us:.3f} us)")
         print("="*70 + "\n")
 
 

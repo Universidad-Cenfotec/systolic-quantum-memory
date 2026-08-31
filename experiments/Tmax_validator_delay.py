@@ -14,11 +14,11 @@ from qiskit_aer.noise import NoiseModel
 from qiskit_ibm_runtime.fake_provider import FakeKyiv
 
 try:
-    from src.time_calculation.ibm_backend_helper import get_ibm_backend, run_on_ibm
+    from experiments.utils.ibm_backend_helper import get_ibm_backend, run_on_ibm
 except ModuleNotFoundError:
     import sys
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
-    from src.time_calculation.ibm_backend_helper import get_ibm_backend, run_on_ibm
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+    from experiments.utils.ibm_backend_helper import get_ibm_backend, run_on_ibm
 
 
 # =============================================================================
@@ -267,6 +267,9 @@ class TmaxValidatorDelay:
             writer.writerow(["SQM Delay Characterization Results"])
             writer.writerow(["Timestamp", datetime.now().isoformat()])
             writer.writerow(["Backend", self.backend.name])
+            _state_labels = {0: "|0>", 1: "|1>", 2: "|+> (H)", 3: "|-> (XH)"}
+            state_label = _state_labels.get(self.initial_state, f"unknown({self.initial_state})")
+            writer.writerow(["Initial State", f"{self.initial_state} ({state_label})"])
             writer.writerow(["N_qubits", self.N])
             writer.writerow(["Hilbert Dimension", f"d = 2^{self.N} = {self.d}"])
             writer.writerow([])
@@ -469,7 +472,7 @@ if __name__ == "__main__":
     # =========================================================================
     # BACKEND MODE: "default" = FakeKyiv simulator | "IBM" = real IBM hardware
     # =========================================================================
-    backend_mode = "IBM"  # Change to "IBM" to run on real IBM hardware
+    backend_mode = "default"  # Change to "IBM" to run on real IBM hardware
 
     # =========================================================================
     # INITIAL STATE
@@ -480,7 +483,7 @@ if __name__ == "__main__":
     #   3 = |->  : qubit starts in |-> (X+H gates), H applied before measure,
     #              fidelity measured vs |1>
     # =========================================================================
-    initial_state = 0  # 0 = |0>, 1 = |1>, 2 = |+> (H), 3 = |-> (XH)
+    initial_state = 3  # 0 = |0>, 1 = |1>, 2 = |+> (H), 3 = |-> (XH)
 
     # 1. DEFINE THE ARCHITECTURE (N = Word width)
     N_qubits = 1

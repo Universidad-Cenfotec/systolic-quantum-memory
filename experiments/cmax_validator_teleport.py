@@ -19,14 +19,14 @@ try:
     from src.functions.qubit_mapper import QubitMapper
     from src.functions.teleportation import SystolicTeleportation
     from src.utils.measurement_parser import MeasurementParser
-    from src.time_calculation.ibm_backend_helper import get_ibm_backend, run_on_ibm
+    from experiments.utils.ibm_backend_helper import get_ibm_backend, run_on_ibm
 except ModuleNotFoundError:
     # Add parent directory to path for direct script execution
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
     from src.functions.qubit_mapper import QubitMapper
     from src.functions.teleportation import SystolicTeleportation
     from src.utils.measurement_parser import MeasurementParser
-    from src.time_calculation.ibm_backend_helper import get_ibm_backend, run_on_ibm
+    from experiments.utils.ibm_backend_helper import get_ibm_backend, run_on_ibm
 
 
 # =============================================================================
@@ -408,8 +408,9 @@ class CMaxValidatorTeleport:
             # Write header with metadata
             writer.writerow(["RB Characterization Results (Multiple Teleportation Protocol)"])
             writer.writerow(["Timestamp", datetime.now().isoformat()])
-            writer.writerow(["Backend", self.backend.name])
-            writer.writerow(["Architecture", f"3 registers × {self.N} qubits = {3*self.N} total qubits"])
+            writer.writerow(["Backend", self.backend.name])            _state_labels = {0: "|0>", 1: "|1>", 2: "|+> (H)", 3: "|-> (XH)"}
+            state_label = _state_labels.get(self.initial_state, f"unknown({self.initial_state})")
+            writer.writerow(["Initial State", f"{self.initial_state} ({state_label})"])            writer.writerow(["Architecture", f"3 registers × {self.N} qubits = {3*self.N} total qubits"])
             writer.writerow(["Registers", "reg_A (ping), reg_B (pong), ancilla (Bell channel)"])
             writer.writerow(["Hilbert Dimension", f"d = 2^{self.N} = {self.d}"])
             writer.writerow(["Native Gate", self.native_2q_gate.upper()])
@@ -630,7 +631,7 @@ if __name__ == "__main__":
     # =========================================================================
     # BACKEND MODE: "default" = FakeKyiv simulator | "IBM" = real IBM hardware
     # =========================================================================
-    backend_mode = "IBM"  # Change to "IBM" to run on real IBM hardware
+    backend_mode = "default"  # Change to "IBM" to run on real IBM hardware
 
     # =========================================================================
     # INITIAL STATE

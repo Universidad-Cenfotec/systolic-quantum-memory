@@ -187,7 +187,8 @@ hardware:
 workloads:
   standard:
     description: Standard read-write patterns
-    count: 10                     # Number of random workloads
+    count: 10                     # Number of workloads to generate
+    multiplier: 10                # Number of READ_0 before and after WRITE_0
   
   delay:
     description: IDLE delay sweep
@@ -262,6 +263,21 @@ This allows flexible experimentation: set permanent defaults in YAML, temporary 
 ```powershell
 python main.py
 ```
+
+**Standard workload with multiplier (count=10, multiplier=10):**
+Create `config.multiplier-study.yaml`:
+```yaml
+global:
+  backend: simulator
+simulator:
+  execution:
+    workload_type: standard
+workloads:
+  standard:
+    count: 10           # 10 workloads
+    multiplier: 10      # Each workload: READ_0(10) + WRITE_0 + READ_0(10) + READ_0
+```
+Run: `python main.py --config config.multiplier-study.yaml`
 
 **Long delay sweep (custom delays):**
 Create `config.delay-study.yaml`:

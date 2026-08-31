@@ -1,5 +1,5 @@
 # ============================================================
-# IBM Backend Helper for Time Calculation Validators
+# IBM Backend Helper for Experiments
 # Systolic Quantum Memory Research Project
 # Role: Compatibility shim — delegates to src.backends.ibm_hardware_backend.
 #       Do NOT duplicate logic here; add it to IBMHardwareBackend instead.

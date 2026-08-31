@@ -5,7 +5,7 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.time_calculation.cmax_validator_swap import CMaxValidator
+from experiments.cmax_validator_swap import CMaxValidator
 
 def test_swap_validator_with_variable_N():
     """Test that SWAP validator works with different N values using unified parser."""
