@@ -38,9 +38,10 @@ from src.utils.hardware_results_processor import save_hardware_comparison_result
 # Compiler Execution Functions (Flow-based - Fidelity on Operation Register)
 # ══════════════════════════════════════════════════════════════════════════════
 
-def run_sqm_flow_compiler(R: int, n: int, c_max: int, t_max_ns: float, 
+def _run_sqm_flow_once(R: int, n: int, c_max: int, t_max_ns: float,
                      workload: List[str], shots: int, backend_manager: BackendInterface,
-                     initial_state: int = 0) -> Optional[Dict[str, Any]]:
+                     initial_state: int = 0, pauli_twirling: bool = False,
+                     twirling_seed: int | None = None) -> Optional[Dict[str, Any]]:
 
     # ──────────────────────────────────────────────────────────
     # SEED INITIALIZATION - For global reproducibility
@@ -57,7 +58,8 @@ def run_sqm_flow_compiler(R: int, n: int, c_max: int, t_max_ns: float,
 
     # Create compiler with optional backend manager (Dependency Injection)
     sqm = SQMFlowCompiler(R=R, n=n, c_max=c_max, t_max_ns=t_max_ns, 
-                      backend_manager=backend_manager, initial_state=initial_state)
+                      backend_manager=backend_manager, initial_state=initial_state,
+                      pauli_twirling=pauli_twirling, twirling_seed=twirling_seed)
 
     # Display workload
     print(f"\n[Workload] Executing {len(workload)} instructions:")
@@ -99,6 +101,50 @@ def run_sqm_flow_compiler(R: int, n: int, c_max: int, t_max_ns: float,
         import traceback
         traceback.print_exc()
         return None
+
+
+def run_sqm_flow_compiler(R: int, n: int, c_max: int, t_max_ns: float,
+                          workload: List[str], shots: int,
+                          backend_manager: BackendInterface,
+                          initial_state: int = 0,
+                          pauli_twirling: bool = False,
+                          twirling_variants: int = 1,
+                          twirling_seed: int | None = None) -> Optional[Dict[str, Any]]:
+    """Run SQM once or average several randomized compiling variants."""
+    if twirling_variants < 1:
+        raise ValueError("twirling_variants must be >= 1")
+    variant_count = twirling_variants if pauli_twirling else 1
+    variant_results = []
+
+    for variant in range(variant_count):
+        seed = None
+        if twirling_seed is not None:
+            seed = twirling_seed + variant * 1_000_003
+        result = _run_sqm_flow_once(
+            R, n, c_max, t_max_ns, workload, shots, backend_manager,
+            initial_state, pauli_twirling, seed,
+        )
+        if result is None:
+            return None
+        variant_results.append(result)
+
+    fidelities = np.array([result['fidelity'] for result in variant_results], dtype=float)
+    counts = {}
+    for result in variant_results:
+        for outcome, count in result.get('counts', {}).items():
+            counts[outcome] = counts.get(outcome, 0) + count
+
+    aggregate = dict(variant_results[0])
+    aggregate['fidelity'] = float(np.mean(fidelities))
+    aggregate['fidelity_std'] = float(np.std(fidelities, ddof=1)) if variant_count > 1 else 0.0
+    aggregate['twirling_enabled'] = pauli_twirling
+    aggregate['twirling_variants'] = variant_count
+    aggregate['twirling_seed'] = twirling_seed
+    aggregate['counts'] = counts
+    aggregate['total_shots'] = shots * variant_count
+    print(f"[SQM Twirling] mean={aggregate['fidelity']:.4f}, "
+          f"std={aggregate['fidelity_std']:.4f}, variants={variant_count}")
+    return aggregate
 
 
 def run_swap_flow_compiler(R: int, n: int, c_max: int, t_max_ns: float,
@@ -170,7 +216,8 @@ def run_swap_flow_compiler(R: int, n: int, c_max: int, t_max_ns: float,
 
 def analyze_workload(R: int, n: int, c_max: int, t_max_ns: float,
                     workload_name: str, workload: List[str], shots: int, backend_manager: BackendInterface,
-                    initial_state: int = 0) -> Optional[Dict[str, Any]]:
+                    initial_state: int = 0, pauli_twirling: bool = False,
+                    twirling_variants: int = 1, twirling_seed: int | None = None) -> Optional[Dict[str, Any]]:
 
     print("\n" + "█" * 70)
     print("█" + " " * 68 + "█")
@@ -190,7 +237,10 @@ def analyze_workload(R: int, n: int, c_max: int, t_max_ns: float,
     # Run SQM with injected backend
     sqm_results = run_sqm_flow_compiler(R=R, n=n, c_max=c_max, t_max_ns=t_max_ns,
                                      workload=workload, shots=shots, initial_state=initial_state,
-                                     backend_manager=backend_manager)
+                                     backend_manager=backend_manager,
+                                     pauli_twirling=pauli_twirling,
+                                     twirling_variants=twirling_variants,
+                                     twirling_seed=twirling_seed)
 
     # Comparative Analysis
     print("\n" + "=" * 70)
@@ -240,7 +290,8 @@ def analyze_workload(R: int, n: int, c_max: int, t_max_ns: float,
 
 def analyze_workload_flow(R: int, n: int, c_max: int, t_max_ns: float,
                     workload_name: str, workload: List[str], shots: int, backend_manager: BackendInterface,
-                    initial_state: int = 0) -> Optional[Dict[str, Any]]:
+                    initial_state: int = 0, pauli_twirling: bool = False,
+                    twirling_variants: int = 1, twirling_seed: int | None = None) -> Optional[Dict[str, Any]]:
     """Flow variant of analyze_workload: measures fidelity on operation register."""
 
     print("\n" + "█" * 70)
@@ -261,7 +312,10 @@ def analyze_workload_flow(R: int, n: int, c_max: int, t_max_ns: float,
     # Run SQM Flow with injected backend
     sqm_results = run_sqm_flow_compiler(R=R, n=n, c_max=c_max, t_max_ns=t_max_ns,
                                      workload=workload, shots=shots, initial_state=initial_state,
-                                     backend_manager=backend_manager)
+                                     backend_manager=backend_manager,
+                                     pauli_twirling=pauli_twirling,
+                                     twirling_variants=twirling_variants,
+                                     twirling_seed=twirling_seed)
 
     # Comparative Analysis
     print("\n" + "=" * 70)
@@ -314,7 +368,9 @@ def analyze_workload_flow(R: int, n: int, c_max: int, t_max_ns: float,
 
 def run_full_comparison(R: int, n: int, c_max: int, t_max_ns: float,
                        shots: int, workloads: List[Tuple[str, List[str]]], backend_manager: BackendInterface,
-                       initial_state: int = 0, flow: int = 0) -> None:
+                       initial_state: int = 0, flow: int = 0,
+                       pauli_twirling: bool = False, twirling_variants: int = 1,
+                       twirling_seed: int | None = None) -> None:
     
     # Summary tracking
     results = []
@@ -330,12 +386,18 @@ def run_full_comparison(R: int, n: int, c_max: int, t_max_ns: float,
             result = analyze_workload_flow(R=R, n=n, c_max=c_max, t_max_ns=t_max_ns,
                                      workload_name=workload_name, 
                                      workload=workload, shots=shots, initial_state=initial_state,
-                                     backend_manager=backend_manager)
+                                     backend_manager=backend_manager,
+                                     pauli_twirling=pauli_twirling,
+                                     twirling_variants=twirling_variants,
+                                     twirling_seed=twirling_seed)
         else:
             result = analyze_workload(R=R, n=n, c_max=c_max, t_max_ns=t_max_ns,
                                      workload_name=workload_name, 
                                      workload=workload, shots=shots, initial_state=initial_state,
-                                     backend_manager=backend_manager)
+                                     backend_manager=backend_manager,
+                                     pauli_twirling=pauli_twirling,
+                                     twirling_variants=twirling_variants,
+                                     twirling_seed=twirling_seed)
         if result:
             results.append(result)
             
@@ -420,6 +482,9 @@ def run_full_comparison(R: int, n: int, c_max: int, t_max_ns: float,
                 'Workload': result['workload_name'],
                 'Tasks': ' -> '.join(result.get('workload_tasks', [])),
                 'SQM_Fidelity': result['comparison']['sqm_fidelity'],
+                'SQM_Fidelity_Std': result['sqm'].get('fidelity_std', 0.0),
+                'SQM_Twirling_Enabled': result['sqm'].get('twirling_enabled', False),
+                'SQM_Twirling_Variants': result['sqm'].get('twirling_variants', 1),
                 'SWAP_Fidelity': result['comparison']['swap_fidelity'],
                 'Difference': result['comparison']['difference'],
                 'Percent_Diff': result['comparison']['percent_diff'],
@@ -520,7 +585,8 @@ def run_full_comparison(R: int, n: int, c_max: int, t_max_ns: float,
             
             # Data table header
             writer.writerow(['DETAILED RESULTS'])
-            fieldnames = ['Run', 'Workload', 'Tasks', 'SQM_Fidelity', 'SWAP_Fidelity', 
+            fieldnames = ['Run', 'Workload', 'Tasks', 'SQM_Fidelity', 'SQM_Fidelity_Std',
+                         'SQM_Twirling_Enabled', 'SQM_Twirling_Variants', 'SWAP_Fidelity',
                          'Difference', 'Percent_Diff', 'SQM_Qubits', 'SWAP_Qubits']
             writer.writerow(fieldnames)
             
@@ -531,6 +597,9 @@ def run_full_comparison(R: int, n: int, c_max: int, t_max_ns: float,
                     row['Workload'],
                     row['Tasks'],
                     row['SQM_Fidelity'],
+                    row['SQM_Fidelity_Std'],
+                    row['SQM_Twirling_Enabled'],
+                    row['SQM_Twirling_Variants'],
                     row['SWAP_Fidelity'],
                     row['Difference'],
                     row['Percent_Diff'],
@@ -597,7 +666,9 @@ def run_real_comparison(R: int, n: int, c_max: int, t_max_ns: float,
                        backend_manager: BackendInterface,
                        initial_state: int = 0,
                        scenarios: List[int] | None = None,
-                       flow: int = 0) -> Optional[Dict[str, Any]]:
+                       flow: int = 0, pauli_twirling: bool = False,
+                       twirling_variants: int = 1,
+                       twirling_seed: int | None = None) -> Optional[Dict[str, Any]]:
     """
     Execute multi-scenario experiment on real IBM Quantum hardware.
 
@@ -628,12 +699,15 @@ def run_real_comparison(R: int, n: int, c_max: int, t_max_ns: float,
     flow_label = "FLOW (operation register)" if flow == 1 else "MEMORY (memory registers)"
     print(f"  Measurement mode: {flow_label}")
     print(f"  Scenarios: {scenarios}")
+    print(f"  Pauli twirling: {'enabled' if pauli_twirling else 'disabled'} ({twirling_variants} variants)")
 
     results: Dict[str, Any] = {
         'timestamp': datetime.now().isoformat(),
         'backend_info': backend_manager.get_backend_info(),
         'workload': workload,
-        'params': {'R': R, 'n': n, 'c_max': c_max, 't_max_ns': t_max_ns, 'shots': shots, 'initial_state': initial_state},
+        'params': {'R': R, 'n': n, 'c_max': c_max, 't_max_ns': t_max_ns, 'shots': shots,
+               'initial_state': initial_state, 'pauli_twirling': pauli_twirling,
+               'twirling_variants': twirling_variants, 'twirling_seed': twirling_seed},
         'scenarios': {}
     }
 
@@ -700,19 +774,19 @@ def run_real_comparison(R: int, n: int, c_max: int, t_max_ns: float,
 
         try:
             
-            sqm_real = SQMFlowCompiler(R=R, n=n, c_max=c_max, t_max_ns=t_max_ns,
-                                      backend_manager=backend_manager, initial_state=initial_state)
-     
-
             filtered = [w for w in workload if not w.startswith("IDLE_5")]
-            circuit_sqm_real = sqm_real.compile_workload(filtered       )
+            results_sqm_real = run_sqm_flow_compiler(
+                R=R, n=n, c_max=c_max, t_max_ns=t_max_ns,
+                workload=filtered, shots=shots, backend_manager=backend_manager,
+                initial_state=initial_state, pauli_twirling=pauli_twirling,
+                twirling_variants=twirling_variants, twirling_seed=twirling_seed,
+            )
+            if results_sqm_real is None:
+                raise RuntimeError("SQM no-delay execution failed")
             print(f"\n[Circuit Generated]")
-            print(f"  Qubits: {circuit_sqm_real.num_qubits}")
-            print(f"  Depth: {circuit_sqm_real.depth()}")
-            print(f"  Size: {circuit_sqm_real.size()}")
+            print(f"  Variants: {results_sqm_real.get('twirling_variants', 1)}")
 
             print(f"\n[Submitting to Hardware]")
-            results_sqm_real = sqm_real.execute(circuit_sqm_real, shots=shots)
             #results_sqm_real = {  "fidelity": 0.95,    "counts": 100,  "total_shots": shots, }
             fidelities[2] = results_sqm_real['fidelity']
             job_ids[2] = results_sqm_real.get('job_id', 'N/A')
@@ -722,7 +796,9 @@ def run_real_comparison(R: int, n: int, c_max: int, t_max_ns: float,
                 'job_id': job_ids[2],
                 'total_shots': results_sqm_real.get('total_shots', shots),
                 'counts_top5': list(results_sqm_real.get('counts', {}).items())[:5],
-                'time_idle_ns': backend_manager.time_idle_ns
+                'time_idle_ns': backend_manager.time_idle_ns,
+                'fidelity_std': results_sqm_real.get('fidelity_std', 0.0),
+                'twirling_variants': results_sqm_real.get('twirling_variants', 1),
             }
 
             print(f"\n[Scenario 2 Results]")
@@ -749,17 +825,18 @@ def run_real_comparison(R: int, n: int, c_max: int, t_max_ns: float,
 
         try:
             # Use Flow-based compiler (fidelity measured on operation register)
-            sqm_real = SQMFlowCompiler(R=R, n=n, c_max=c_max, t_max_ns=t_max_ns,
-                                  backend_manager=backend_manager, initial_state=initial_state)
-
-            circuit_sqm_real = sqm_real.compile_workload(workload)
+            results_sqm_real = run_sqm_flow_compiler(
+                R=R, n=n, c_max=c_max, t_max_ns=t_max_ns,
+                workload=workload, shots=shots, backend_manager=backend_manager,
+                initial_state=initial_state, pauli_twirling=pauli_twirling,
+                twirling_variants=twirling_variants, twirling_seed=twirling_seed,
+            )
+            if results_sqm_real is None:
+                raise RuntimeError("SQM real-timing execution failed")
             print(f"\n[Circuit Generated]")
-            print(f"  Qubits: {circuit_sqm_real.num_qubits}")
-            print(f"  Depth: {circuit_sqm_real.depth()}")
-            print(f"  Size: {circuit_sqm_real.size()}")
+            print(f"  Variants: {results_sqm_real.get('twirling_variants', 1)}")
 
             print(f"\n[Submitting to Hardware]")
-            results_sqm_real = sqm_real.execute(circuit_sqm_real, shots=shots)
             #results_sqm_real = { "fidelity": 0.95, "counts": 100, "total_shots": shots}
             fidelities[3] = results_sqm_real['fidelity']
             job_ids[3] = results_sqm_real.get('job_id', 'N/A')
@@ -769,7 +846,9 @@ def run_real_comparison(R: int, n: int, c_max: int, t_max_ns: float,
                 'job_id': job_ids[3],
                 'total_shots': results_sqm_real.get('total_shots', shots),
                 'counts_top5': list(results_sqm_real.get('counts', {}).items())[:5],
-                'time_idle_ns': backend_manager.time_idle_ns
+                'time_idle_ns': backend_manager.time_idle_ns,
+                'fidelity_std': results_sqm_real.get('fidelity_std', 0.0),
+                'twirling_variants': results_sqm_real.get('twirling_variants', 1),
             }
 
             print(f"\n[Scenario 3 Results]")

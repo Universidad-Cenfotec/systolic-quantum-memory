@@ -7,13 +7,20 @@
 from typing import cast, Dict, Optional, Tuple
 from qiskit import QuantumCircuit
 from qiskit.circuit import QuantumRegister, ClassicalRegister, Clbit
+from src.utils.pauli_twirling import PauliTwirler
 
 
 class SystolicTeleportation:
 
-    def __init__(self, name: str = "systolic_teleportation") -> None:
+    def __init__(
+        self,
+        name: str = "systolic_teleportation",
+        pauli_twirling: bool = False,
+        twirling_seed: Optional[int] = None,
+    ) -> None:
 
         self.name = name
+        self.pauli_twirler = PauliTwirler(pauli_twirling, twirling_seed)
         # Cache de registros ancilla y clásicos por par lógico (source_name, dest_name)
         self._ancilla_cache: Dict[Tuple[str, str], QuantumRegister] = {}
         self._crbell_cache: Dict[Tuple[str, str], ClassicalRegister] = {}
@@ -75,7 +82,7 @@ class SystolicTeleportation:
             else:
                 ancilla_reg = self._ancilla_cache[cache_key]
                 cr_bell = self._crbell_cache[cache_key]
-                for q in ancilla_reg:
+                for q in cast(QuantumRegister, ancilla_reg):
                     qc.reset(q)
                 print(f"[Teleportation] Reusing pre-assigned ancilla for {source_reg.name} -> {dest_reg.name}")
         elif cache_key not in self._ancilla_cache:
@@ -95,9 +102,12 @@ class SystolicTeleportation:
         else:
             ancilla_reg = self._ancilla_cache[cache_key]
             cr_bell = self._crbell_cache[cache_key]
-            for q in ancilla_reg:
+            for q in cast(QuantumRegister, ancilla_reg):
                 qc.reset(q)
             print(f"[Teleportation] Reusing ancilla pair for {source_reg.name} -> {dest_reg.name}")
+
+        assert ancilla_reg is not None
+        assert cr_bell is not None
         
         # ──────────────────────────────────────────────────────────────
         # 2. PARALLEL TELEPORTATION LOOP (over all N qubits)
@@ -115,15 +125,15 @@ class SystolicTeleportation:
             # ────────────────────────────────────────────────────────
             # 2a. BELL CHANNEL GENERATION (between link_q and dest_q)
             # ────────────────────────────────────────────────────────
-            qc.h(link_q)
-            qc.cx(link_q, dest_q)
+            self.pauli_twirler.h(qc, link_q)
+            self.pauli_twirler.cx(qc, link_q, dest_q)
             
             # ────────────────────────────────────────────────────────
             # 2b. SOURCE INTERACTION (BSM preparation)
             # ────────────────────────────────────────────────────────
             
-            qc.cx(source_q, link_q)
-            qc.h(source_q)
+            self.pauli_twirler.cx(qc, source_q, link_q)
+            self.pauli_twirler.h(qc, source_q)
             
             # ────────────────────────────────────────────────────────
             # 2c. BELL STATE MEASUREMENT (BSM)

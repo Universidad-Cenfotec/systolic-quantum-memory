@@ -15,10 +15,12 @@ from qiskit_ibm_runtime.fake_provider import FakeKyiv
 
 try:
     from experiments.utils.ibm_backend_helper import get_ibm_backend, run_on_ibm
+    from src.utils.pauli_twirling import PauliTwirler
 except ModuleNotFoundError:
     import sys
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
     from experiments.utils.ibm_backend_helper import get_ibm_backend, run_on_ibm
+    from src.utils.pauli_twirling import PauliTwirler
 
 
 # =============================================================================
@@ -68,6 +70,9 @@ class TmaxValidatorId:
         t2_ns: float = 35_887,
         idle_time_ns: float = 1000,
         backend=None,
+        pauli_twirling: bool = False,
+        twirling_seed: int | None = None,
+        twirling_variants: int = 1,
     ) -> None:
         """
         Args:
@@ -87,6 +92,11 @@ class TmaxValidatorId:
         self.t1_ns = t1_ns
         self.t2_ns = t2_ns
         self.idle_time_ns = idle_time_ns
+        self.pauli_twirling = pauli_twirling
+        self.twirling_seed = twirling_seed
+        if twirling_variants < 1:
+            raise ValueError("twirling_variants must be >= 1")
+        self.twirling_variants = twirling_variants
 
         # Backend configuration
         if backend is not None:
@@ -123,7 +133,8 @@ class TmaxValidatorId:
 
     # -- Empirical fidelity (noisy idle via ID gates) -------------------------
 
-    def empirical_fidelity(self, n_ids: int, shots: int = 4000) -> float:
+    def empirical_fidelity(self, n_ids: int, shots: int = 4000,
+                           twirling_seed: int | None = None) -> float:
         """
         Measure fidelity = P(|1...1>) after applying *n_ids* identity
         gates on each qubit.
@@ -135,6 +146,10 @@ class TmaxValidatorId:
             raise ValueError(f"n_ids must be >= 0, received: {n_ids}")
 
         qc = QuantumCircuit(self.N, self.N)
+        twirler = PauliTwirler(
+            enabled=self.pauli_twirling,
+            seed=self.twirling_seed if twirling_seed is None else twirling_seed,
+        )
 
         # Initialise |1>^N
         for i in range(self.N):
@@ -144,7 +159,7 @@ class TmaxValidatorId:
         # thermal_relaxation_error attached to 'id')
         for _ in range(n_ids):
             for i in range(self.N):
-                qc.id(i)
+                twirler.identity(qc, i)
 
         qc.measure(range(self.N), range(self.N))
 
@@ -197,11 +212,19 @@ class TmaxValidatorId:
         # -- Empirical data collection -----------------------------------------
         m_arr = np.array(m_list, dtype=float)
         y_data: list[float] = []
+        y_std: list[float] = []
+        variant_count = self.twirling_variants if self.pauli_twirling else 1
 
         for m in m_list:
-            f_emp = self.empirical_fidelity(m, shots=shots)
+            fidelities = []
+            for variant in range(variant_count):
+                seed = None if self.twirling_seed is None else self.twirling_seed + variant * 1_000_003 + m * 1_009
+                fidelities.append(self.empirical_fidelity(m, shots=shots, twirling_seed=seed))
+            f_emp = float(np.mean(fidelities))
+            f_std = float(np.std(fidelities, ddof=1)) if variant_count > 1 else 0.0
             y_data.append(f_emp)
-            print(f"    m={m:4d}  F_emp = {f_emp:.6f}")
+            y_std.append(f_std)
+            print(f"    m={m:4d}  F_emp = {f_emp:.6f}  std = {f_std:.6f} ({variant_count} variants)")
 
         y_arr = np.array(y_data, dtype=float)
 
@@ -233,7 +256,7 @@ class TmaxValidatorId:
             if plot_path
             else "data/id_characterization.csv"
         )
-        self._save_results_to_csv(m_arr, y_arr, popt, csv_path)
+        self._save_results_to_csv(m_arr, y_arr, popt, csv_path, np.array(y_std))
 
         return popt
 
@@ -245,6 +268,7 @@ class TmaxValidatorId:
         y_data: np.ndarray,
         popt: np.ndarray,
         csv_path: str,
+        y_std: np.ndarray | None = None,
     ) -> None:
         """Save ID characterization results to CSV file."""
         os.makedirs(
@@ -265,6 +289,9 @@ class TmaxValidatorId:
             writer.writerow(["T1 (ns)", f"{self.t1_ns:.3f}"])
             writer.writerow(["T2 (ns)", f"{self.t2_ns:.3f}"])
             writer.writerow(["idle_time_ns", f"{self.idle_time_ns:.1f}"])
+            writer.writerow(["Pauli Twirling", "enabled" if self.pauli_twirling else "disabled"])
+            writer.writerow(["Twirling Variants", self.twirling_variants if self.pauli_twirling else 1])
+            writer.writerow(["Twirling Seed", self.twirling_seed if self.twirling_seed is not None else "random"])
             writer.writerow([])
 
             writer.writerow(["Fit Parameters: F(m) = A * p^m + B"])
@@ -273,12 +300,15 @@ class TmaxValidatorId:
             writer.writerow(["B (asymptote)", f"{B_fit:.6f}"])
             writer.writerow([])
 
-            writer.writerow(["m (ID gates)", "F_emp", "F_fit"])
-            for m, f_emp in zip(m_arr, y_data):
+            writer.writerow(["m (ID gates)", "F_emp (mean)", "F_emp (std)", "F_fit"])
+            if y_std is None:
+                y_std = np.zeros_like(y_data)
+            for m, f_emp, f_std in zip(m_arr, y_data, y_std):
                 f_fit_val = rb_decay_model(m, A_fit, p_fit, B_fit)
                 writer.writerow([
                     f"{int(m):d}",
                     f"{f_emp:.6f}",
+                    f"{f_std:.6f}",
                     f"{f_fit_val:.6f}",
                 ])
 
@@ -472,6 +502,8 @@ if __name__ == "__main__":
     # BACKEND MODE: "default" = FakeKyiv simulator | "IBM" = real IBM hardware
     # =========================================================================
     backend_mode = "default"  # Change to "IBM" to run on real IBM hardware
+    twirling = False           # Set to True to enable Pauli twirling
+    twirling_variants = 10    # Number of random circuits per ID point
 
     # =========================================================================
     # CONFIGURATION (all noise parameters defined here)
@@ -492,6 +524,8 @@ if __name__ == "__main__":
             t2_ns=T2_NS,
             idle_time_ns=IDLE_TIME_NS,
             backend=ibm_backend,
+            pauli_twirling=twirling,
+            twirling_variants=twirling_variants,
         )
     else:
         validator = TmaxValidatorId(
@@ -499,6 +533,8 @@ if __name__ == "__main__":
             t1_ns=T1_NS,
             t2_ns=T2_NS,
             idle_time_ns=IDLE_TIME_NS,
+            pauli_twirling=twirling,
+            twirling_variants=twirling_variants,
         )
 
     # -- Phase 1: ID gate characterization (curve_fit) -------------------------

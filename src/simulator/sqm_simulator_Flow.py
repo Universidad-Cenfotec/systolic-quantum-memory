@@ -48,6 +48,8 @@ class SQMFlowCompiler:
         t_max_ns: float,
         backend_manager: BackendInterface,
         initial_state: int = 0,
+        pauli_twirling: bool = False,
+        twirling_seed: int | None = None,
     ):
         
         self.R = R
@@ -55,6 +57,8 @@ class SQMFlowCompiler:
         self.c_max = c_max
         self.t_max_ns = t_max_ns
         self.initial_state = initial_state
+        self.pauli_twirling = pauli_twirling
+        self.twirling_seed = twirling_seed
         
         # Dependency Injection: Backend manager must be provided from main.py
         self.backend_manager = backend_manager
@@ -123,7 +127,11 @@ class SQMFlowCompiler:
         # ----------------------------------------------------------
 
         self.work_phase = SystolicWorkPhase(name="sqm_work_phase")
-        self.teleportation = SystolicTeleportation(name="sqm_teleportation")
+        self.teleportation = SystolicTeleportation(
+            name="sqm_teleportation",
+            pauli_twirling=self.pauli_twirling,
+            twirling_seed=self.twirling_seed,
+        )
 
         # Cache for built registers (to avoid rebuilding)
         self._built_registers: Dict[str, QuantumRegister] = {}

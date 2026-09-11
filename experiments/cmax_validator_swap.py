@@ -16,12 +16,14 @@ from qiskit_ibm_runtime.fake_provider import FakeKyiv
 try:
     from src.functions.qubit_mapper import QubitMapper
     from src.utils.measurement_parser import MeasurementParser
+    from src.utils.pauli_twirling import PauliTwirler
     from experiments.utils.ibm_backend_helper import get_ibm_backend, run_on_ibm
 except ModuleNotFoundError:
     # Add parent directory to path for direct script execution
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
     from src.functions.qubit_mapper import QubitMapper
     from src.utils.measurement_parser import MeasurementParser
+    from src.utils.pauli_twirling import PauliTwirler
     from experiments.utils.ibm_backend_helper import get_ibm_backend, run_on_ibm
 
 
@@ -44,7 +46,9 @@ class CMaxValidator:
 
     # -- Constructor ----------------------------------------------------------
 
-    def __init__(self, N: int = 1, backend=None, initial_state: int = 1) -> None:
+    def __init__(self, N: int = 1, backend=None, initial_state: int = 1,
+                 pauli_twirling: bool = False, twirling_seed: int | None = None,
+                 twirling_variants: int = 1) -> None:
         """
         Args:
             N: Number of qubits per register (word width).
@@ -60,6 +64,11 @@ class CMaxValidator:
         self.d = 2 ** self.N
         self.B_ideal = 1.0 / self.d
         self.initial_state = initial_state
+        self.pauli_twirling = pauli_twirling
+        self.twirling_seed = twirling_seed
+        if twirling_variants < 1:
+            raise ValueError("twirling_variants must be >= 1")
+        self.twirling_variants = twirling_variants
 
         # 1. Backend configuration
         #    If backend is provided externally (e.g. real IBM), use it directly.
@@ -124,7 +133,8 @@ class CMaxValidator:
 
     # -- Empirical fidelity (noisy WorkPhase) ----------------------------------
 
-    def empirical_fidelity(self, n_swaps: int, shots: int = 4000) -> float:
+    def empirical_fidelity(self, n_swaps: int, shots: int = 4000,
+                           twirling_seed: int | None = None) -> float:
         """
         Measure fidelity after n_swaps SWAP cycles.
 
@@ -138,6 +148,10 @@ class CMaxValidator:
             raise ValueError(f"n_swaps must be >= 0, received: {n_swaps}")
 
         qc = QuantumCircuit(2 * self.N, self.N)
+        twirler = PauliTwirler(
+            enabled=self.pauli_twirling,
+            seed=self.twirling_seed if twirling_seed is None else twirling_seed,
+        )
 
         # ── State preparation ──────────────────────────────────────────────────
         if self.initial_state == 0:
@@ -147,19 +161,19 @@ class CMaxValidator:
                 qc.x(i)       # |0⟩ -> |1⟩
         elif self.initial_state == 2:
             for i in range(self.N):
-                qc.h(i)       # |0⟩ -> |+⟩
+                twirler.h(qc, i)       # |0⟩ -> |+⟩
         elif self.initial_state == 3:
             for i in range(self.N):
                 qc.x(i)       # |0⟩ -> |1⟩
-                qc.h(i)       # |1⟩ -> |-⟩
+                twirler.h(qc, i)       # |1⟩ -> |-⟩
         else:
             raise ValueError(f"initial_state must be 0-3, received: {self.initial_state}")
 
         for _ in range(n_swaps):
             for i in range(self.N):
-                qc.cx(i, i + self.N)        # CNOT1
-                qc.cx(i + self.N, i)        # CNOT2
-                qc.cx(i, i + self.N)        # CNOT3
+                twirler.cx(qc, i, i + self.N)        # CNOT1
+                twirler.cx(qc, i + self.N, i)        # CNOT2
+                twirler.cx(qc, i, i + self.N)        # CNOT3
             qc.barrier()   # Prevents inter-SWAP optimization by transpiler
 
         # -- Determine which register holds the data after n_swaps ---------------
@@ -178,7 +192,7 @@ class CMaxValidator:
         # For |+⟩ and |-⟩: apply H to rotate back to computational basis
         if self.initial_state in (2, 3):
             for i in measure_qubits:
-                qc.h(i)
+                twirler.h(qc, i)
 
         qc.measure(measure_qubits, range(self.N))
         print(f"    [circuit] n_swaps={n_swaps} -> measuring {reg_label}")
@@ -251,11 +265,19 @@ class CMaxValidator:
         # -- Empirical data collection -----------------------------------------
         m_arr  = np.array(m_list, dtype=float)
         y_data: list[float] = []
+        y_std: list[float] = []
+        variant_count = self.twirling_variants if self.pauli_twirling else 1
 
         for m in m_list:
-            f_emp = self.empirical_fidelity(m, shots=shots)
+            fidelities = []
+            for variant in range(variant_count):
+                seed = None if self.twirling_seed is None else self.twirling_seed + variant * 1_000_003 + m * 1_009
+                fidelities.append(self.empirical_fidelity(m, shots=shots, twirling_seed=seed))
+            f_emp = float(np.mean(fidelities))
+            f_std = float(np.std(fidelities, ddof=1)) if variant_count > 1 else 0.0
             y_data.append(f_emp)
-            print(f"    m={m:3d}  F_emp = {f_emp:.6f}")
+            y_std.append(f_std)
+            print(f"    m={m:3d}  F_emp = {f_emp:.6f}  std = {f_std:.6f} ({variant_count} variants)")
 
         y_arr = np.array(y_data, dtype=float)
 
@@ -283,7 +305,7 @@ class CMaxValidator:
 
         # -- Save results to CSV -----------------------------------------------
         csv_path = plot_path.replace('.png', '.csv').replace('results', 'data') if plot_path else "data/rb_characterization_swap.csv"
-        self._save_rb_results_to_csv(m_arr, y_arr, popt, csv_path)
+        self._save_rb_results_to_csv(m_arr, y_arr, popt, csv_path, np.array(y_std))
 
         return popt
 
@@ -295,6 +317,7 @@ class CMaxValidator:
         y_data: np.ndarray,
         popt: np.ndarray,
         csv_path: str,
+        y_std: np.ndarray | None = None,
     ) -> None:
         """Save RB characterization results to CSV file."""
         import csv
@@ -318,6 +341,9 @@ class CMaxValidator:
             writer.writerow(["Architecture", f"2 registers * {self.N} qubits = {2*self.N} total qubits"])
             writer.writerow(["Hilbert Dimension", f"d = 2^{self.N} = {self.d}"])
             writer.writerow(["Native Gate", self.native_2q_gate.upper()])
+            writer.writerow(["Pauli Twirling", "enabled" if self.pauli_twirling else "disabled"])
+            writer.writerow(["Twirling Variants", self.twirling_variants if self.pauli_twirling else 1])
+            writer.writerow(["Twirling Seed", self.twirling_seed if self.twirling_seed is not None else "random"])
             writer.writerow([])
             
             # Write fit parameters
@@ -330,11 +356,13 @@ class CMaxValidator:
             writer.writerow([])
             
             # Write data columns
-            writer.writerow(["m (SWAP cycles)", "F_emp (fidelity)", "F_fit (fitted)"])
+            writer.writerow(["m (SWAP cycles)", "F_emp (mean fidelity)", "F_emp (std)", "F_fit (fitted)"])
             
-            for m, f_emp in zip(m_arr, y_data):
+            if y_std is None:
+                y_std = np.zeros_like(y_data)
+            for m, f_emp, f_std in zip(m_arr, y_data, y_std):
                 f_fit = rb_decay_model(m, A_fit, p_fit, B_fit)
-                writer.writerow([f"{int(m):d}", f"{f_emp:.6f}", f"{f_fit:.6f}"])
+                writer.writerow([f"{int(m):d}", f"{f_emp:.6f}", f"{f_std:.6f}", f"{f_fit:.6f}"])
         
         print(f"\n  [CSV] RB results saved to: {csv_path}")
 
@@ -512,6 +540,8 @@ if __name__ == "__main__":
     # BACKEND MODE: "default" = FakeKyiv simulator | "IBM" = real IBM hardware
     # =========================================================================
     backend_mode = "default"  # Change to "IBM" to run on real IBM hardware
+    twirling = False           # Set to True to enable Pauli twirling
+    twirling_variants = 10    # Number of random circuits per RB point
 
     # =========================================================================
     # INITIAL STATE
@@ -531,12 +561,15 @@ if __name__ == "__main__":
     _state_labels = {0: "|0⟩", 1: "|1⟩", 2: "|+⟩ (H)", 3: "|-⟩ (XH)"}
     state_label = _state_labels.get(initial_state, f"unknown({initial_state})")
     print(f"[Main] Running with initial_state={initial_state} ({state_label})")
+    print(f"[Main] Pauli twirling: {'enabled' if twirling else 'disabled'} ({twirling_variants} variants)")
 
     if backend_mode == "IBM":
         ibm_backend = get_ibm_backend("ibm_kingston")
-        validator = CMaxValidator(N=N_qubits, backend=ibm_backend, initial_state=initial_state)
+        validator = CMaxValidator(N=N_qubits, backend=ibm_backend, initial_state=initial_state,
+                      pauli_twirling=twirling, twirling_variants=twirling_variants)
     else:
-        validator = CMaxValidator(N=N_qubits, initial_state=initial_state)
+        validator = CMaxValidator(N=N_qubits, initial_state=initial_state,
+                      pauli_twirling=twirling, twirling_variants=twirling_variants)
 
     # -- Phase B.1: Complete RB characterization -------------------------------
     m_list = [0, 1, 2, 4, 6, 8, 10, 15, 20, 25, 30, 40, 50, 60, 80, 100]

@@ -15,10 +15,12 @@ from qiskit_ibm_runtime.fake_provider import FakeKyiv
 
 try:
     from experiments.utils.ibm_backend_helper import get_ibm_backend, run_on_ibm
+    from src.utils.pauli_twirling import PauliTwirler
 except ModuleNotFoundError:
     import sys
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
     from experiments.utils.ibm_backend_helper import get_ibm_backend, run_on_ibm
+    from src.utils.pauli_twirling import PauliTwirler
 
 
 # =============================================================================
@@ -59,7 +61,9 @@ class TmaxValidatorDelay:
 
     # -- Constructor ----------------------------------------------------------
 
-    def __init__(self, N: int = 1, backend=None, initial_state: int = 0) -> None:
+    def __init__(self, N: int = 1, backend=None, initial_state: int = 0,
+                 pauli_twirling: bool = False, twirling_seed: int | None = None,
+                 twirling_variants: int = 1) -> None:
         """
         Args:
             N: Number of qubits per register (word width).
@@ -74,6 +78,11 @@ class TmaxValidatorDelay:
         self.N = N
         self.d = 2 ** self.N
         self.B_ideal = 1.0 / self.d      # Maximum-mixing floor (analogue of CMax)
+        self.pauli_twirling = pauli_twirling
+        self.twirling_seed = twirling_seed
+        if twirling_variants < 1:
+            raise ValueError("twirling_variants must be >= 1")
+        self.twirling_variants = twirling_variants
 
         # Backend configuration
         if backend is not None:
@@ -108,7 +117,8 @@ class TmaxValidatorDelay:
 
     # -- Empirical fidelity (noisy idle) --------------------------------------
 
-    def empirical_fidelity(self, delay_ns: float, shots: int = 4000) -> float:
+    def empirical_fidelity(self, delay_ns: float, shots: int = 4000,
+                           twirling_seed: int | None = None) -> float:
         """
         Measure fidelity after idling for *delay_ns* nanoseconds.
 
@@ -123,6 +133,10 @@ class TmaxValidatorDelay:
             raise ValueError(f"delay_ns must be >= 0, received: {delay_ns}")
 
         qc = QuantumCircuit(self.N, self.N)
+        twirler = PauliTwirler(
+            enabled=self.pauli_twirling,
+            seed=self.twirling_seed if twirling_seed is None else twirling_seed,
+        )
 
         # ── State preparation ─────────────────────────────────────────────────
         if self.initial_state == 0:
@@ -132,11 +146,11 @@ class TmaxValidatorDelay:
                 qc.x(i)       # |0> -> |1>
         elif self.initial_state == 2:
             for i in range(self.N):
-                qc.h(i)       # |0> -> |+>
+                twirler.h(qc, i)       # |0> -> |+>
         elif self.initial_state == 3:
             for i in range(self.N):
                 qc.x(i)       # |0> -> |1>
-                qc.h(i)       # |1> -> |->
+                twirler.h(qc, i)       # |1> -> |->
         else:
             raise ValueError(f"initial_state must be 0-3, received: {self.initial_state}")
 
@@ -149,7 +163,7 @@ class TmaxValidatorDelay:
         # For |+> and |->: apply H to rotate back to computational basis
         if self.initial_state in (2, 3):
             for i in range(self.N):
-                qc.h(i)
+                twirler.h(qc, i)
 
         qc.measure(range(self.N), range(self.N))
         #print(qc.draw(output="text"))
@@ -203,11 +217,19 @@ class TmaxValidatorDelay:
         # -- Empirical data collection -----------------------------------------
         t_arr = np.array(delay_list_ns, dtype=float)
         y_data: list[float] = []
+        y_std: list[float] = []
+        variant_count = self.twirling_variants if self.pauli_twirling else 1
 
         for t_ns in delay_list_ns:
-            f_emp = self.empirical_fidelity(t_ns, shots=shots)
+            fidelities = []
+            for variant in range(variant_count):
+                seed = None if self.twirling_seed is None else self.twirling_seed + variant * 1_000_003 + int(t_ns) * 1_009
+                fidelities.append(self.empirical_fidelity(t_ns, shots=shots, twirling_seed=seed))
+            f_emp = float(np.mean(fidelities))
+            f_std = float(np.std(fidelities, ddof=1)) if variant_count > 1 else 0.0
             y_data.append(f_emp)
-            print(f"    t={t_ns:10.1f} ns  F_emp = {f_emp:.6f}")
+            y_std.append(f_std)
+            print(f"    t={t_ns:10.1f} ns  F_emp = {f_emp:.6f}  std = {f_std:.6f} ({variant_count} variants)")
 
         y_arr = np.array(y_data, dtype=float)
 
@@ -240,7 +262,7 @@ class TmaxValidatorDelay:
             if plot_path
             else "data/delay_characterization.csv"
         )
-        self._save_results_to_csv(t_arr, y_arr, popt, csv_path)
+        self._save_results_to_csv(t_arr, y_arr, popt, csv_path, np.array(y_std))
 
         return popt
 
@@ -252,6 +274,7 @@ class TmaxValidatorDelay:
         y_data: np.ndarray,
         popt: np.ndarray,
         csv_path: str,
+        y_std: np.ndarray | None = None,
     ) -> None:
         """Save delay characterization results to CSV file."""
         os.makedirs(
@@ -272,6 +295,9 @@ class TmaxValidatorDelay:
             writer.writerow(["Initial State", f"{self.initial_state} ({state_label})"])
             writer.writerow(["N_qubits", self.N])
             writer.writerow(["Hilbert Dimension", f"d = 2^{self.N} = {self.d}"])
+            writer.writerow(["Pauli Twirling", "enabled" if self.pauli_twirling else "disabled"])
+            writer.writerow(["Twirling Variants", self.twirling_variants if self.pauli_twirling else 1])
+            writer.writerow(["Twirling Seed", self.twirling_seed if self.twirling_seed is not None else "random"])
             writer.writerow([])
 
             writer.writerow(["Fit Parameters: F(t) = A * exp(-t/tau) + B"])
@@ -280,13 +306,16 @@ class TmaxValidatorDelay:
             writer.writerow(["B (asymptote)", f"{B_fit:.6f}"])
             writer.writerow([])
 
-            writer.writerow(["t (ns)", "t (us)", "F_emp", "F_fit"])
-            for t_ns, f_emp in zip(t_arr, y_data):
+            writer.writerow(["t (ns)", "t (us)", "F_emp (mean)", "F_emp (std)", "F_fit"])
+            if y_std is None:
+                y_std = np.zeros_like(y_data)
+            for t_ns, f_emp, f_std in zip(t_arr, y_data, y_std):
                 f_fit_val = exp_decay_model(t_ns, A_fit, tau_fit, B_fit)
                 writer.writerow([
                     f"{t_ns:.1f}",
                     f"{t_ns / 1000:.3f}",
                     f"{f_emp:.6f}",
+                    f"{f_std:.6f}",
                     f"{f_fit_val:.6f}",
                 ])
 
@@ -473,6 +502,8 @@ if __name__ == "__main__":
     # BACKEND MODE: "default" = FakeKyiv simulator | "IBM" = real IBM hardware
     # =========================================================================
     backend_mode = "default"  # Change to "IBM" to run on real IBM hardware
+    twirling = False           # Set to True to enable Pauli twirling
+    twirling_variants = 10    # Number of random circuits per delay point
 
     # =========================================================================
     # INITIAL STATE
@@ -492,12 +523,15 @@ if __name__ == "__main__":
     _state_labels = {0: "|0>", 1: "|1>", 2: "|+> (H)", 3: "|-> (XH)"}
     state_label = _state_labels.get(initial_state, f"unknown({initial_state})")
     print(f"[Main] Running with initial_state={initial_state} ({state_label})")
+    print(f"[Main] Pauli twirling: {'enabled' if twirling else 'disabled'} ({twirling_variants} variants)")
 
     if backend_mode == "IBM":
         ibm_backend = get_ibm_backend("ibm_kingston")
-        validator = TmaxValidatorDelay(N=N_qubits, backend=ibm_backend, initial_state=initial_state)
+        validator = TmaxValidatorDelay(N=N_qubits, backend=ibm_backend, initial_state=initial_state,
+                           pauli_twirling=twirling, twirling_variants=twirling_variants)
     else:
-        validator = TmaxValidatorDelay(N=N_qubits, initial_state=initial_state)
+        validator = TmaxValidatorDelay(N=N_qubits, initial_state=initial_state,
+                           pauli_twirling=twirling, twirling_variants=twirling_variants)
 
     # -- Phase 1: Delay characterization (curve_fit) ---------------------------
     #    Define delay times directly in nanoseconds.

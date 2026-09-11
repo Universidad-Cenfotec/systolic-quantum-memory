@@ -212,7 +212,10 @@ class IBMHardwareBackend(BackendInterface):
             # Authenticate and get service
             # Note: channel can be 'ibm_quantum', 'ibm_cloud', or 'local'
             # The API accepts string values directly
-            self.service = QiskitRuntimeService()  # type: ignore
+            service_kwargs = {"channel": channel}
+            if instance:
+                service_kwargs["instance"] = instance
+            self.service = QiskitRuntimeService(**service_kwargs)  # type: ignore[arg-type]
             
             # Get backend instance
             self.backend = self.service.backend(backend_name)

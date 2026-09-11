@@ -97,12 +97,13 @@ pip install -r requirements.txt
 ```
 
 ### 3. Configure IBM Quantum Credentials (for hardware experiments)
-```python
-from qiskit_ibm_runtime import QiskitRuntimeService
-QiskitRuntimeService.save_account(
-    channel='ibm_quantum_platform',
-    token='YOUR_IBM_QUANTUM_TOKEN'
-)
+Set a newly generated IBM Quantum API token in the environment and run the
+setup helper. Do not commit the token or place it in source code:
+
+```powershell
+$env:IBM_QUANTUM_TOKEN = "<your-new-ibm-quantum-token>"
+python context/setup_token.py
+python -c "from qiskit_ibm_runtime import QiskitRuntimeService; s = QiskitRuntimeService(channel='ibm_quantum_platform'); print([b.name for b in s.backends(simulator=False)][:3])"
 ```
 
 ### 4. Run Local Comparative Analysis

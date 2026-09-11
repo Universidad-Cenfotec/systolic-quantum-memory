@@ -8,7 +8,7 @@
 # Global Settings
 # ============================================================================
 global:
-  backend: simulator                    # Options: simulator, hardware
+  backend: hardware                    # Options: simulator, hardware
   seed: null                            # Random seed (null = random)
 
 # ============================================================================
@@ -19,18 +19,21 @@ simulator:
   compiler:
     R: 1                                # Memory registers
     n: 1                                # Qubits per register
-    c_max: 1                            # Gate cost threshold
-    t_max_ns: 1000000                   # Time threshold (nanoseconds)
+    c_max: 10                            # Gate cost threshold
+    t_max_ns: 1000                   # Time threshold (nanoseconds)
   
   # Simulation parameters
   execution:
-    shots: 1024                         # Number of shots
-    initial_state: 1                    # 0=|0>, 1=|1>, 2=|+>, 3=|->
-    workload_type: standard             # Options: standard, delay, custom
+    shots: 1024                          # Number of shots
+    initial_state: 0                    # 0=|0>, 1=|1>, 2=|+>, 3=|->
+    workload_type: delay             # Options: standard, delay, custom
+    pauli_twirling: False               # Enable randomized compiling on SQM teleportation
+    twirling_variants: 10               # Random circuits per workload
+    twirling_seed: null                 # Integer for reproducible variants
   
   # Thermal parameters (quantum noise model)
   thermal:
-    use_default: false                   # Use default IBM values
+    use_default: True                   # Use default IBM values
     T1_ns: 149149                       # T1 relaxation time (nanoseconds)
     T2_ns: 38194                        # T2 dephasing time (nanoseconds)
     idle_time_ns: 1000                  # Idle period duration (nanoseconds)
@@ -40,22 +43,24 @@ simulator:
 # ============================================================================
 hardware:
   # IBM Quantum connection
-  backend_name: ibm_kingston            # IBM backend to use
+  backend_name: ibm_fez            # IBM backend to use
   channel: ibm_quantum_platform         # Channel: ibm_quantum_platform or ibm_quantum
-  
   # Compiler parameters (same as simulator)
   compiler:
     R: 1
     n: 1
-    c_max: 1
-    t_max_ns: 1000000
+    c_max: 10
+    t_max_ns: 1000
   
   # Execution parameters
   execution:
     shots: 1024                         # Hardware shots (lower than simulator)
     initial_state: 0
-    workload_type: standard
-    scenarios: null                     # null = all, or "1,3" for specific scenarios
+    workload_type: delay
+    scenarios: "1"                     # null = all, or "1,3" for specific scenarios
+    pauli_twirling: False               # Enable randomized compiling on SQM teleportation
+    twirling_variants: 10               # Random circuits/jobs per workload
+    twirling_seed: null                 # Integer for reproducible variants
 
 # ============================================================================
 # Workload Definitions
@@ -69,7 +74,8 @@ workloads:
   
   delay:
     description: IDLE delay sweep
-    delays_ns: [10, 20, 40, 80, 100, 150, 200, 300, 400, 500]
+    #delays_ns: [10, 20, 40, 80, 100, 150, 200, 300, 400, 500]
+    delays_ns: [10]
     # Auto-generated: WRITE_0 + IDLE_X + READ_0 for each delay X
   
   custom:

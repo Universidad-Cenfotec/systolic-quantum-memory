@@ -156,6 +156,8 @@ def run_simulator_mode(config: Dict[str, Any]):
     print(f"  Gate Cost Threshold: {cfg['compiler']['c_max']}")
     print(f"  Time Threshold: {cfg['compiler']['t_max_ns']} ns")
     print(f"  Shots: {cfg['execution']['shots']}")
+    print(f"  Pauli twirling: {'enabled' if cfg['execution'].get('pauli_twirling', False) else 'disabled'} "
+          f"({cfg['execution'].get('twirling_variants', 1)} variants)")
     state_labels = {0: "|0>", 1: "|1>", 2: "|+> (H)", 3: "|-> (XH)"}
     print(f"  Target State: {state_labels.get(cfg['execution']['initial_state'], 'unknown')}")
     
@@ -184,7 +186,10 @@ def run_simulator_mode(config: Dict[str, Any]):
         workloads=workloads,
         initial_state=cfg['execution']['initial_state'],
         backend_manager=backend,
-        flow=config['advanced']['flow_mode']
+        flow=config['advanced']['flow_mode'],
+        pauli_twirling=cfg['execution'].get('pauli_twirling', False),
+        twirling_variants=cfg['execution'].get('twirling_variants', 1),
+        twirling_seed=cfg['execution'].get('twirling_seed')
     )
     
     print("\n[OK] Simulator mode completed successfully")
@@ -214,7 +219,8 @@ def run_hardware_mode(config: Dict[str, Any]):
     try:
         backend = IBMHardwareBackend(
             backend_name=cfg['backend_name'],
-            channel=cfg['channel']
+            channel=cfg['channel'],
+            instance=cfg.get('instance')
         )
         backend_info = backend.get_backend_info()
         
@@ -239,6 +245,8 @@ def run_hardware_mode(config: Dict[str, Any]):
     print(f"\n[Compiler Parameters]")
     print(f"  R={cfg['compiler']['R']}, n={cfg['compiler']['n']}, c_max={cfg['compiler']['c_max']}, t_max={cfg['compiler']['t_max_ns']} ns")
     print(f"  Shots: {cfg['execution']['shots']}")
+    print(f"  Pauli twirling: {'enabled' if cfg['execution'].get('pauli_twirling', False) else 'disabled'} "
+          f"({cfg['execution'].get('twirling_variants', 1)} variants)")
     state_labels = {0: "|0>", 1: "|1>", 2: "|+> (H)", 3: "|-> (XH)"}
     print(f"  Target State: {state_labels.get(cfg['execution']['initial_state'], 'unknown')}")
     
@@ -287,7 +295,10 @@ def run_hardware_mode(config: Dict[str, Any]):
                 backend_manager=backend,
                 initial_state=cfg['execution']['initial_state'],
                 scenarios=scenarios,
-                flow=config['advanced']['flow_mode']
+                flow=config['advanced']['flow_mode'],
+                pauli_twirling=cfg['execution'].get('pauli_twirling', False),
+                twirling_variants=cfg['execution'].get('twirling_variants', 1),
+                twirling_seed=cfg['execution'].get('twirling_seed')
             )
             
             if results:
@@ -312,7 +323,10 @@ def run_hardware_mode(config: Dict[str, Any]):
                     'c_max': cfg['compiler']['c_max'],
                     't_max_ns': cfg['compiler']['t_max_ns'],
                     'shots': cfg['execution']['shots'],
-                    'initial_state': cfg['execution']['initial_state']
+                    'initial_state': cfg['execution']['initial_state'],
+                    'pauli_twirling': cfg['execution'].get('pauli_twirling', False),
+                    'twirling_variants': cfg['execution'].get('twirling_variants', 1),
+                    'twirling_seed': cfg['execution'].get('twirling_seed')
                 }
             )
             

@@ -93,21 +93,33 @@ def save_hardware_comparison_results(experiment_results: Dict[str, Any]) -> None
     t_max_val = params.get('t_max_ns', 'N/A')
     shots_val = params.get('shots', 'N/A')
     init_state = params.get('initial_state', 'N/A')
+    twirling_enabled = params.get('pauli_twirling', False)
+    twirling_variants = params.get('twirling_variants', 1)
     
     csv_path = os.path.join(data_dir, f'hardware_comparison_{timestamp}.csv')
     
     with open(csv_path, 'w', newline='') as csvfile:
-        fieldnames = ['Scenario', 'Configuration', 'Fidelity', 'Job_ID', 'R', 'N', 'C_Max', 'T_Max_ns', 'Shots', 'Initial_State', 'Notes']
+        fieldnames = ['Scenario', 'Configuration', 'Fidelity', 'Fidelity_Std', 'Twirling_Enabled',
+                  'Twirling_Variants', 'Job_ID', 'R', 'N', 'C_Max', 'T_Max_ns', 'Shots', 'Initial_State', 'Notes']
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
         
         # Write all available scenarios
         for scenario_num in available_scenarios:
             data = scenario_data[scenario_num]
+            scenario_key = {
+                1: 'scenario_1_swap',
+                2: 'scenario_2_sqm_no_delay',
+                3: 'scenario_3_sqm_real',
+            }[scenario_num]
             writer.writerow({
                 'Scenario': scenario_num,
                 'Configuration': data['config'],
                 'Fidelity': f'{data["fidelity"]:.4f}',
+                'Fidelity_Std': experiment_results.get('scenarios', {}).get(
+                    scenario_key, {}).get('fidelity_std', 0.0),
+                'Twirling_Enabled': twirling_enabled,
+                'Twirling_Variants': twirling_variants,
                 'Job_ID': data['job_id'],
                 'R': r_val,
                 'N': n_val,
@@ -138,6 +150,8 @@ def save_hardware_comparison_results(experiment_results: Dict[str, Any]) -> None
         writer.writerow(['T_Max_ns', t_max_val])
         writer.writerow(['Shots', shots_val])
         writer.writerow(['Initial_State', init_state])
+        writer.writerow(['Pauli_Twirling', twirling_enabled])
+        writer.writerow(['Twirling_Variants', twirling_variants])
         writer.writerow([''])
         
         # Write fidelities for available scenarios
@@ -266,6 +280,8 @@ def save_hardware_multi_workload_results(all_workload_results: list,
     t_max_val = params.get('t_max_ns', 'N/A')
     shots_val = params.get('shots', 'N/A')
     init_state = params.get('initial_state', 'N/A')
+    twirling_enabled = params.get('pauli_twirling', False)
+    twirling_variants = params.get('twirling_variants', 1)
     
     # ──────────────────────────────────────────────────────────
     # Aggregate all results for CSV
@@ -317,10 +333,20 @@ def save_hardware_multi_workload_results(all_workload_results: list,
         # Add rows for each scenario
         for scenario_num in available_scenarios:
             data = scenario_data[scenario_num]
+            scenario_key = {
+                1: 'scenario_1_swap',
+                2: 'scenario_2_sqm_no_delay',
+                3: 'scenario_3_sqm_real',
+            }[scenario_num]
+            fidelity_std = workload_result.get('scenarios', {}).get(
+                scenario_key, {}).get('fidelity_std', 0.0)
             csv_row = {
                 'Scenario': scenario_num,
                 'Configuration': data['config'],
                 'Fidelity': f'{data["fidelity"]:.4f}',
+                'Fidelity_Std': fidelity_std,
+                'Twirling_Enabled': twirling_enabled,
+                'Twirling_Variants': twirling_variants,
                 'Job_ID': data['job_id'],
                 'R': r_val,
                 'N': n_val,
@@ -348,8 +374,9 @@ def save_hardware_multi_workload_results(all_workload_results: list,
     csv_path = os.path.join(data_dir, f'hardware_comparison_multi_{timestamp}.csv')
     
     with open(csv_path, 'w', newline='') as csvfile:
-        fieldnames = ['Scenario', 'Configuration', 'Fidelity', 'Job_ID', 'R', 'N', 
-                     'C_Max', 'T_Max_ns', 'Shots', 'Initial_State', 'Notes', 'Workload']
+        fieldnames = ['Scenario', 'Configuration', 'Fidelity', 'Fidelity_Std',
+                 'Twirling_Enabled', 'Twirling_Variants', 'Job_ID', 'R', 'N',
+                 'C_Max', 'T_Max_ns', 'Shots', 'Initial_State', 'Notes', 'Workload']
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(all_csv_rows)
@@ -374,6 +401,8 @@ def save_hardware_multi_workload_results(all_workload_results: list,
         writer.writerow(['T_Max_ns', t_max_val])
         writer.writerow(['Shots', shots_val])
         writer.writerow(['Initial_State', init_state])
+        writer.writerow(['Pauli_Twirling', twirling_enabled])
+        writer.writerow(['Twirling_Variants', twirling_variants])
         writer.writerow([''])
         
         # Workload list
