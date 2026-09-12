@@ -46,6 +46,7 @@ class SwapFlowCompiler:
         t_max_ns: float,
         backend_manager: BackendInterface,
         initial_state: int = 0,
+        mitigation_config: Dict[str, Any] = None,
     ):
        
         self.R = R
@@ -53,6 +54,7 @@ class SwapFlowCompiler:
         self.c_max = c_max
         self.t_max_ns = t_max_ns
         self.initial_state = initial_state
+        self.mitigation_config = mitigation_config or {}
         
         # Dependency Injection: Backend manager must be provided from main.py
         self.backend_manager = backend_manager
@@ -310,7 +312,7 @@ class SwapFlowCompiler:
         return qc
 
     # --------------------------------------------------------------
-    # EXECUTION VIA BACKEND MANAGER
+    # EXECUTION VIA BACKEND MANAGER (WITH OPTIONAL MITIGATION)
     # FLOW VARIANT: Measures fidelity on OPERATION REGISTER (q_work)
     # --------------------------------------------------------------
 
@@ -369,7 +371,7 @@ class SwapFlowCompiler:
             print("[Transpile] Translating to hardware topology with seed=42...")
             
             initial_layout = self._get_initial_layout(qc_measured)
-            print(qc_measured.draw(output='text'))
+            #print(qc_measured.draw(output='text'))
             print("[Noise Model] Extracting noise characteristics...")
             
             qc_transpiled = transpile(
@@ -381,6 +383,33 @@ class SwapFlowCompiler:
             )
             
             print(f"[Execution] Sending circuit to Backend Manager...")
+            
+            # Extract Mitigation configuration
+            mitigation_active = self.mitigation_config.get('enabled', True) and (
+                self.mitigation_config.get('zne', {}).get('enabled', False) or
+                self.mitigation_config.get('rem', {}).get('enabled', False)
+            )
+
+            if mitigation_active:
+                from src.mitigation.flow_helper import run_mitigation_flow
+                
+                print(f"[Execution] Mitigation active")
+                
+                target_state_bits = self.n
+                target_state = ('1' * target_state_bits) if self.initial_state in (1, 3) else ('0' * target_state_bits)
+
+                result = run_mitigation_flow(
+                    compiler=self,
+                    qc_transpiled=qc_transpiled,
+                    shots=shots,
+                    target_state=target_state,
+                    qr_work=qr_work
+                )
+                if result is not None:
+                    return result
+
+            # Normal (non-mitigated) execution — also used as fallback
+            # when mitigation is skipped for this architecture.
             result = self.backend_manager.run(qc_transpiled, shots=shots, seed=42)
             
             counts = result.get_counts()

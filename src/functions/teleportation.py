@@ -84,7 +84,7 @@ class SystolicTeleportation:
                 cr_bell = self._crbell_cache[cache_key]
                 for q in cast(QuantumRegister, ancilla_reg):
                     qc.reset(q)
-                print(f"[Teleportation] Reusing pre-assigned ancilla for {source_reg.name} -> {dest_reg.name}")
+                #print(f"[Teleportation] Reusing pre-assigned ancilla for {source_reg.name} -> {dest_reg.name}")
         elif cache_key not in self._ancilla_cache:
             # MODO DINÁMICO: crear ancilla internamente (comportamiento original)
             ancilla_name = f"ancilla_{source_reg.name}_to_{dest_reg.name}"

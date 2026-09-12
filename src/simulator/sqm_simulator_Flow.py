@@ -50,6 +50,7 @@ class SQMFlowCompiler:
         initial_state: int = 0,
         pauli_twirling: bool = False,
         twirling_seed: int | None = None,
+        mitigation_config: Dict[str, Any] = None,
     ):
         
         self.R = R
@@ -59,6 +60,7 @@ class SQMFlowCompiler:
         self.initial_state = initial_state
         self.pauli_twirling = pauli_twirling
         self.twirling_seed = twirling_seed
+        self.mitigation_config = mitigation_config or {}
         
         # Dependency Injection: Backend manager must be provided from main.py
         self.backend_manager = backend_manager
@@ -298,9 +300,10 @@ class SQMFlowCompiler:
                 remaining_time = time_ns
                 for block_idx in range(num_blocks):
                     block_time = min(self.t_max_ns, remaining_time)
-                    
+                     
                     if num_blocks > 1:
-                        print(f"      Block {block_idx + 1}/{num_blocks}: Applying {block_time:.0f} ns delay")
+                        #print(f"      Block {block_idx + 1}/{num_blocks}: Applying {block_time:.0f} ns delay")
+                        pass
                     
                     # MUST recalculate active_qubits EACH block iteration because
                     # a tele-refresh in the previous block flips QPC location
@@ -402,7 +405,7 @@ class SQMFlowCompiler:
         )
 
         if requires_refresh:
-            print(f"    [Odometer] Threshold exceeded for Mem[{logical_addr}] -> Tele-refreshing")
+           # print(f"    [Odometer] Threshold exceeded for Mem[{logical_addr}] -> Tele-refreshing")
 
             current_location = self.qpc.get_cache_location(logical_addr)
             if current_location == CacheLocation.ORIGINAL:
@@ -423,10 +426,10 @@ class SQMFlowCompiler:
 
             new_location = self.qpc.tick(logical_addr)
 
-            print(f"    [Tele-Refresh] Mem[{logical_addr}] now stored in {new_location.value}")
+           # print(f"    [Tele-Refresh] Mem[{logical_addr}] now stored in {new_location.value}")
 
     # --------------------------------------------------------------
-    # EXECUTION VIA BACKEND MANAGER
+    # EXECUTION VIA BACKEND MANAGER (WITH OPTIONAL MITIGATION)
     # FLOW VARIANT: Measures fidelity on OPERATION REGISTER (q_work)
     # --------------------------------------------------------------
 
@@ -488,7 +491,7 @@ class SQMFlowCompiler:
             print("[Transpile] Translating to hardware topology with seed=42...")
             
             initial_layout = self._get_initial_layout(qc_measured)
-            print(qc_measured.draw(output='text'))
+            #print(qc_measured.draw(output='text'))
             print("[Noise Model] Extracting noise characteristics...")
            
             qc_transpiled = transpile(
@@ -500,48 +503,72 @@ class SQMFlowCompiler:
             )
 
             print(f"[Execution] Sending circuit to Backend Manager...")
-            result = self.backend_manager.run(qc_transpiled, shots=shots, seed=42)
-            
-            counts = result.get_counts()
-            total_counts = sum(counts.values())
-            
-            # ──────────────────────────────────────────────────────
-            # FLOW: Compare against target state for n qubits only
-            # States 0, 2 -> target '0'*n
-            # States 1, 3 -> target '1'*n (state 3: XH init + H measure = |1>)
-            # ──────────────────────────────────────────────────────
-            fidelity_count = 0
-            target_state_bits = self.n  # Only n qubits (operation register)
-            target_state = ('1' * target_state_bits) if self.initial_state in (1, 3) else ('0' * target_state_bits)
-            
-            for outcome, count in counts.items():
-                final_meas_bits = self._parse_measurement_outcome(outcome)
-            
-                if final_meas_bits == target_state:
-                    fidelity_count += count
-            
-            fidelity = fidelity_count / total_counts if total_counts > 0 else 0.0
 
-            print(f"\n[Circuit] Generated transpiled circuit:")
-            print(f"  Qubits: {qc_transpiled.num_qubits}")
-            print(f"  Clbits: {qc_transpiled.num_clbits}")
-            print(f"  Depth: {qc_transpiled.depth()}")
-            print(f"  Size: {qc_transpiled.size()}")
-            
-            _state_labels = {0: "|0...0>", 1: "|1...1>", 2: "|+> (H->|0>)", 3: "|-> (XH->|1>)"}
-            state_label = _state_labels.get(self.initial_state, "|0...0>")
-            print(f"  Fidelity FLOW ({state_label} success for {self.n} qubits in operation register): {fidelity:.4f}")
-            
-            # Show top outcomes
-            if counts:
-                sorted_counts = sorted(counts.items(), key=lambda x: x[1], reverse=True)
-                print(f"  Top 3 outcomes: {dict(sorted_counts[:3])}")
+            # Extract Mitigation configuration
+            mitigation_active = self.mitigation_config.get('enabled', True) and (
+                self.mitigation_config.get('zne', {}).get('enabled', False) or
+                self.mitigation_config.get('rem', {}).get('enabled', False)
+            )
 
-            return {
-                "fidelity": fidelity,
-                "counts": counts,
-                "total_shots": shots,
-            }
+            if mitigation_active:
+                from src.mitigation.flow_helper import run_mitigation_flow
+                
+                target_state_bits = self.n
+                target_state = ('1' * target_state_bits) if self.initial_state in (1, 3) else ('0' * target_state_bits)
+
+                result = run_mitigation_flow(
+                    compiler=self,
+                    qc_transpiled=qc_transpiled,
+                    shots=shots,
+                    target_state=target_state,
+                    qr_work=qr_work
+                )
+                if result is not None:
+                    return result
+
+            else:
+                result = self.backend_manager.run(qc_transpiled, shots=shots, seed=42)
+                
+                counts = result.get_counts()
+                total_counts = sum(counts.values())
+                
+                # ──────────────────────────────────────────────────────
+                # FLOW: Compare against target state for n qubits only
+                # States 0, 2 -> target '0'*n
+                # States 1, 3 -> target '1'*n (state 3: XH init + H measure = |1>)
+                # ──────────────────────────────────────────────────────
+                fidelity_count = 0
+                target_state_bits = self.n  # Only n qubits (operation register)
+                target_state = ('1' * target_state_bits) if self.initial_state in (1, 3) else ('0' * target_state_bits)
+                
+                for outcome, count in counts.items():
+                    final_meas_bits = self._parse_measurement_outcome(outcome)
+                
+                    if final_meas_bits == target_state:
+                        fidelity_count += count
+                
+                fidelity = fidelity_count / total_counts if total_counts > 0 else 0.0
+
+                print(f"\n[Circuit] Generated transpiled circuit:")
+                print(f"  Qubits: {qc_transpiled.num_qubits}")
+                print(f"  Clbits: {qc_transpiled.num_clbits}")
+                print(f"  Depth: {qc_transpiled.depth()}")
+                print(f"  Size: {qc_transpiled.size()}")
+                
+                _state_labels = {0: "|0...0>", 1: "|1...1>", 2: "|+> (H->|0>)", 3: "|-> (XH->|1>)"}
+                state_label = _state_labels.get(self.initial_state, "|0...0>")
+                print(f"  Fidelity FLOW ({state_label} success for {self.n} qubits in operation register): {fidelity:.4f}")
+                
+                # Show top outcomes
+                if counts:
+                    sorted_counts = sorted(counts.items(), key=lambda x: x[1], reverse=True)
+                    print(f"  Top 3 outcomes: {dict(sorted_counts[:3])}")
+
+                return {
+                    "fidelity": fidelity,
+                    "counts": counts,
+                    "total_shots": shots,
+                }
 
         except Exception as e:
             print(f"[ERROR] Execution failed: {e}")

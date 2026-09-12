@@ -19,6 +19,7 @@ try:
     from src.functions.qubit_mapper import QubitMapper
     from src.functions.teleportation import SystolicTeleportation
     from src.utils.measurement_parser import MeasurementParser
+    from src.mitigation import ReadoutMitigator, ZNEFolder, ZNEExtrapolator
     from experiments.utils.ibm_backend_helper import get_ibm_backend, run_on_ibm
 except ModuleNotFoundError:
     # Add parent directory to path for direct script execution
@@ -26,6 +27,7 @@ except ModuleNotFoundError:
     from src.functions.qubit_mapper import QubitMapper
     from src.functions.teleportation import SystolicTeleportation
     from src.utils.measurement_parser import MeasurementParser
+    from src.mitigation import ReadoutMitigator, ZNEFolder, ZNEExtrapolator
     from experiments.utils.ibm_backend_helper import get_ibm_backend, run_on_ibm
 
 
@@ -74,6 +76,7 @@ class CMaxValidatorTeleport:
         pauli_twirling: bool = False,
         twirling_seed: int | None = None,
         twirling_variants: int = 1,
+        mitigation_config: dict | None = None,
     ) -> None:
         """
         Args:
@@ -128,6 +131,17 @@ class CMaxValidatorTeleport:
         _state_labels = {0: "|0⟩", 1: "|1⟩", 2: "|+⟩ (H)", 3: "|-⟩ (XH)"}
         state_label = _state_labels.get(initial_state, f"unknown({initial_state})")
         print(f"[CMaxValidatorTeleport] Initial state : {state_label}")
+
+        # 7. Error mitigation configuration (opt-in, default disabled)
+        self.mitigation_config = mitigation_config or {}
+        self.zne_enabled = self.mitigation_config.get("zne", {}).get("enabled", False)
+        self.rem_enabled = self.mitigation_config.get("rem", {}).get("enabled", False)
+        self.zne_noise_factors = self.mitigation_config.get("zne", {}).get("noise_factors", [1, 3])
+        self.zne_extrapolator_method = self.mitigation_config.get("zne", {}).get("extrapolator", "linear")
+        self.zne_seed = self.mitigation_config.get("zne", {}).get("zne_seed", None)
+        if self.zne_enabled or self.rem_enabled:
+            print(f"[CMaxValidatorTeleport] Mitigation: ZNE={'ON' if self.zne_enabled else 'OFF'}, "
+                  f"REM={'ON' if self.rem_enabled else 'OFF'}")
 
     # -- Extraction of calibration parameters ----------------------------------
 
@@ -334,7 +348,66 @@ class CMaxValidatorTeleport:
             if final_bits == target_state:
                 fidelity_count += count
 
-        return fidelity_count / shots
+        f_raw = fidelity_count / shots
+
+        # ── Error mitigation (opt-in) ─────────────────────────────────────────
+        if not (self.zne_enabled or self.rem_enabled):
+            return f_raw
+
+        mitigation_result = {"f_raw": f_raw}
+
+        # REM: readout error mitigation on final measurement register
+        if self.rem_enabled:
+            try:
+                # Physical qubits of the final register
+                if final_reg is reg_B:
+                    final_physical = [initial_layout[self.N + i] for i in range(self.N)]
+                else:
+                    final_physical = [initial_layout[i] for i in range(self.N)]
+                rem = ReadoutMitigator.from_backend_properties(
+                    self.backend, final_physical
+                )
+                corrected = rem.apply(counts)
+                rem_count = 0
+                for b, c in corrected.items():
+                    fb = MeasurementParser.extract_register_bits(b, "cr_final", register_layout)
+                    if fb == target_state:
+                        rem_count += c
+                mitigation_result["f_rem"] = rem_count / max(sum(corrected.values()), 1)
+            except (ValueError, AttributeError) as e:
+                print(f"    [REM] Skipped: {e}")
+                mitigation_result["f_rem"] = None
+
+        # ZNE: fold transpiled circuit at multiple noise factors
+        if self.zne_enabled:
+            folder = ZNEFolder(seed=self.zne_seed)
+            extrapolator = ZNEExtrapolator()
+            zne_raw_fids = {1: f_raw}
+
+            for factor in self.zne_noise_factors:
+                if factor == 1:
+                    continue
+                folded = folder.fold_circuit(qc_t, factor)
+                if self.is_ibm:
+                    zne_counts = run_on_ibm(folded, self.backend, shots=shots)
+                else:
+                    zne_job = AerSimulator(noise_model=self.noise_model).run(folded, shots=shots)
+                    zne_counts = zne_job.result().get_counts()
+                zne_fid_count = 0
+                for b, c in zne_counts.items():
+                    fb = MeasurementParser.extract_register_bits(b, "cr_final", register_layout)
+                    if fb == target_state:
+                        zne_fid_count += c
+                zne_raw_fids[factor] = zne_fid_count / shots
+
+            factors_sorted = sorted(zne_raw_fids.keys())
+            values = [zne_raw_fids[f] for f in factors_sorted]
+            zne_result = extrapolator.extrapolate(factors_sorted, values, self.zne_extrapolator_method)
+            mitigation_result["f_zne"] = zne_result.bounded
+            mitigation_result["f_zne_raw"] = zne_result.raw
+            mitigation_result["zne_per_factor"] = zne_raw_fids
+
+        return mitigation_result
 
     # -- RB Characterization (Magesan) -----------------------------------------
 

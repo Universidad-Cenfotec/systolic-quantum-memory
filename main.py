@@ -186,10 +186,10 @@ def run_simulator_mode(config: Dict[str, Any]):
         workloads=workloads,
         initial_state=cfg['execution']['initial_state'],
         backend_manager=backend,
-        flow=config['advanced']['flow_mode'],
         pauli_twirling=cfg['execution'].get('pauli_twirling', False),
         twirling_variants=cfg['execution'].get('twirling_variants', 1),
-        twirling_seed=cfg['execution'].get('twirling_seed')
+        twirling_seed=cfg['execution'].get('twirling_seed'),
+        mitigation_config=config.get('mitigation', {})
     )
     
     print("\n[OK] Simulator mode completed successfully")
@@ -295,10 +295,10 @@ def run_hardware_mode(config: Dict[str, Any]):
                 backend_manager=backend,
                 initial_state=cfg['execution']['initial_state'],
                 scenarios=scenarios,
-                flow=config['advanced']['flow_mode'],
                 pauli_twirling=cfg['execution'].get('pauli_twirling', False),
                 twirling_variants=cfg['execution'].get('twirling_variants', 1),
-                twirling_seed=cfg['execution'].get('twirling_seed')
+                twirling_seed=cfg['execution'].get('twirling_seed'),
+                mitigation_config=config.get('mitigation', {})
             )
             
             if results:

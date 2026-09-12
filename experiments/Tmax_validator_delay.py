@@ -16,11 +16,13 @@ from qiskit_ibm_runtime.fake_provider import FakeKyiv
 try:
     from experiments.utils.ibm_backend_helper import get_ibm_backend, run_on_ibm
     from src.utils.pauli_twirling import PauliTwirler
+    from src.mitigation import ReadoutMitigator, ZNEFolder, ZNEExtrapolator
 except ModuleNotFoundError:
     import sys
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
     from experiments.utils.ibm_backend_helper import get_ibm_backend, run_on_ibm
     from src.utils.pauli_twirling import PauliTwirler
+    from src.mitigation import ReadoutMitigator, ZNEFolder, ZNEExtrapolator
 
 
 # =============================================================================
@@ -63,7 +65,8 @@ class TmaxValidatorDelay:
 
     def __init__(self, N: int = 1, backend=None, initial_state: int = 0,
                  pauli_twirling: bool = False, twirling_seed: int | None = None,
-                 twirling_variants: int = 1) -> None:
+                 twirling_variants: int = 1,
+                 mitigation_config: dict | None = None) -> None:
         """
         Args:
             N: Number of qubits per register (word width).
@@ -114,6 +117,17 @@ class TmaxValidatorDelay:
         _state_labels = {0: "|0>", 1: "|1>", 2: "|+> (H)", 3: "|-> (XH)"}
         state_label = _state_labels.get(initial_state, f"unknown({initial_state})")
         print(f"[TmaxValidatorDelay] Initial state : {state_label}")
+
+        # 6. Error mitigation configuration (opt-in, default disabled)
+        self.mitigation_config = mitigation_config or {}
+        self.zne_enabled = self.mitigation_config.get("zne", {}).get("enabled", False)
+        self.rem_enabled = self.mitigation_config.get("rem", {}).get("enabled", False)
+        self.zne_noise_factors = self.mitigation_config.get("zne", {}).get("noise_factors", [1, 3])
+        self.zne_extrapolator_method = self.mitigation_config.get("zne", {}).get("extrapolator", "linear")
+        self.zne_seed = self.mitigation_config.get("zne", {}).get("zne_seed", None)
+        if self.zne_enabled or self.rem_enabled:
+            print(f"[TmaxValidatorDelay] Mitigation: ZNE={'ON' if self.zne_enabled else 'OFF'}, "
+                  f"REM={'ON' if self.rem_enabled else 'OFF'}")
 
     # -- Empirical fidelity (noisy idle) --------------------------------------
 
@@ -188,7 +202,59 @@ class TmaxValidatorDelay:
             if measured == target_state:
                 fidelity_count += count
 
-        return fidelity_count / shots
+        f_raw = fidelity_count / shots
+
+        # ── Error mitigation (opt-in) ─────────────────────────────────────────
+        if not (self.zne_enabled or self.rem_enabled):
+            return f_raw
+
+        mitigation_result = {"f_raw": f_raw}
+
+        # REM: readout error mitigation
+        if self.rem_enabled:
+            try:
+                rem = ReadoutMitigator.from_backend_properties(
+                    self.backend, list(range(self.N))
+                )
+                corrected = rem.apply(counts)
+                rem_count = sum(
+                    c for b, c in corrected.items()
+                    if b.replace(' ', '')[-self.N:] == target_state
+                )
+                mitigation_result["f_rem"] = rem_count / max(sum(corrected.values()), 1)
+            except (ValueError, AttributeError) as e:
+                print(f"    [REM] Skipped: {e}")
+                mitigation_result["f_rem"] = None
+
+        # ZNE: fold at multiple noise factors and extrapolate
+        if self.zne_enabled:
+            folder = ZNEFolder(seed=self.zne_seed)
+            extrapolator = ZNEExtrapolator()
+            zne_raw_fids = {1: f_raw}
+
+            for factor in self.zne_noise_factors:
+                if factor == 1:
+                    continue
+                folded = folder.fold_circuit(qc_t, factor)
+                if self.is_ibm:
+                    zne_counts = run_on_ibm(folded, self.backend, shots=shots)
+                else:
+                    zne_job = self.simulator.run(folded, shots=shots)
+                    zne_counts = zne_job.result().get_counts()
+                zne_fid_count = sum(
+                    c for b, c in zne_counts.items()
+                    if b.replace(' ', '')[-self.N:] == target_state
+                )
+                zne_raw_fids[factor] = zne_fid_count / shots
+
+            factors_sorted = sorted(zne_raw_fids.keys())
+            values = [zne_raw_fids[f] for f in factors_sorted]
+            zne_result = extrapolator.extrapolate(factors_sorted, values, self.zne_extrapolator_method)
+            mitigation_result["f_zne"] = zne_result.bounded
+            mitigation_result["f_zne_raw"] = zne_result.raw
+            mitigation_result["zne_per_factor"] = zne_raw_fids
+
+        return mitigation_result
 
     # -- Delay characterization (curve_fit) -----------------------------------
 
