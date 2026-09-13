@@ -496,8 +496,14 @@ def run_full_comparison(R: int, n: int, c_max: int, t_max_ns: float,
             writer.writerow(['t_max_ns (Max Time Threshold)', f'{t_max_ns}'])
             writer.writerow(['shots', shots])
             writer.writerow(['initial_state', initial_state])
+            writer.writerow(['pauli_twirling', pauli_twirling])
+            writer.writerow(['twirling_variants', twirling_variants])
+            writer.writerow(['twirling_seed', twirling_seed])
             _mc = mitigation_config or {}
+            writer.writerow(['Mitigation Target Arch', _mc.get('target_architecture', 'both')])
             writer.writerow(['ZNE Enabled', _mc.get('zne', {}).get('enabled', False)])
+            writer.writerow(['ZNE Noise Factors', _mc.get('zne', {}).get('noise_factors', [])])
+            writer.writerow(['ZNE Extrapolator', _mc.get('zne', {}).get('extrapolator', 'none')])
             writer.writerow(['REM Enabled', _mc.get('rem', {}).get('enabled', False)])
             writer.writerow([])
             
@@ -556,7 +562,16 @@ def run_full_comparison(R: int, n: int, c_max: int, t_max_ns: float,
             writer.writerow(['t_max_ns (Max Time Threshold)', f'{t_max_ns}'])
             writer.writerow(['shots', shots])
             writer.writerow(['initial_state', initial_state])
+            writer.writerow(['pauli_twirling', pauli_twirling])
+            writer.writerow(['twirling_variants', twirling_variants])
+            writer.writerow(['twirling_seed', twirling_seed])
             writer.writerow(['num_workloads', len(workloads)])
+            _mc = mitigation_config or {}
+            writer.writerow(['Mitigation Target Arch', _mc.get('target_architecture', 'both')])
+            writer.writerow(['ZNE Enabled', _mc.get('zne', {}).get('enabled', False)])
+            writer.writerow(['ZNE Noise Factors', _mc.get('zne', {}).get('noise_factors', [])])
+            writer.writerow(['ZNE Extrapolator', _mc.get('zne', {}).get('extrapolator', 'none')])
+            writer.writerow(['REM Enabled', _mc.get('rem', {}).get('enabled', False)])
             writer.writerow([])
             
             # Results section

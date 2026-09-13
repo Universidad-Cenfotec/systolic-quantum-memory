@@ -357,7 +357,16 @@ class CMaxValidator:
         y_data: list[float] = []
 
         for m in m_list:
-            f_emp = self.empirical_fidelity(m, shots=shots)
+            f_emp_res = self.empirical_fidelity(m, shots=shots)
+            if isinstance(f_emp_res, dict):
+                if f_emp_res.get("f_zne") is not None:
+                    f_emp = f_emp_res["f_zne"]
+                elif f_emp_res.get("f_rem") is not None:
+                    f_emp = f_emp_res["f_rem"]
+                else:
+                    f_emp = f_emp_res["f_raw"]
+            else:
+                f_emp = f_emp_res
             y_data.append(f_emp)
             print(f"    m={m:3d}  F_emp = {f_emp:.6f}")
 
@@ -420,6 +429,8 @@ class CMaxValidator:
             writer.writerow(["Hilbert Dimension", f"d = 2^{self.N} = {self.d}"])
             writer.writerow(["Native Gate", self.native_2q_gate.upper()])
             writer.writerow(["Teleportation Module", "SystolicTeleportation (with active reset)"])
+            writer.writerow(["Mitigation ZNE", "enabled" if getattr(self, "zne_enabled", False) else "disabled"])
+            writer.writerow(["Mitigation REM", "enabled" if getattr(self, "rem_enabled", False) else "disabled"])
             writer.writerow([])
             
             # Write fit parameters
@@ -626,19 +637,40 @@ if __name__ == "__main__":
     # =========================================================================
     backend_mode = "default"  # Change to "IBM" to run on real IBM hardware
 
+    # Mitigation toggles
+    use_zne = False
+    use_rem = False
+    mitigation_config = {
+        "zne": {"enabled": use_zne, "noise_factors": [1, 3], "extrapolator": "linear"},
+        "rem": {"enabled": use_rem}
+    }
+
     # -- DEFINE THE ARCHITECTURE (N = Word width per register) -----------------
     N_qubits = 2
 
+    suffix = ""
+    if use_zne: suffix += "Z"
+    if use_rem: suffix += "R"
+    if suffix: suffix = "_" + suffix
+    prefix = "sm" if backend_mode != "IBM" else "rb"
+
     if backend_mode == "IBM":
         ibm_backend = get_ibm_backend("ibm_kingston")
-        validator = CMaxValidator(N=N_qubits, backend=ibm_backend)
+        validator = CMaxValidator(
+            N=N_qubits, 
+            backend=ibm_backend,
+            mitigation_config=mitigation_config
+        )
     else:
-        validator = CMaxValidator(N=N_qubits)
+        validator = CMaxValidator(
+            N=N_qubits,
+            mitigation_config=mitigation_config
+        )
     
 
     # -- Phase B.1: Complete RB characterization with teleportation ------------
     m_list = [0, 1, 2, 4, 6, 8, 10, 15, 20, 25, 30, 40, 50, 60, 80, 100]
-    popt = validator.run_rb_characterization(m_list, shots=4000, plot_path = "results/rb_decay_curve_sqm n="+ str(N_qubits) +".png")
+    popt = validator.run_rb_characterization(m_list, shots=1024, plot_path=f"results/{prefix}_decay_curve_sqm_n={N_qubits}{suffix}.png")
 
     # -- Phase B.2: Print results and validate model ---------------------------
     r_emp = validator.print_rb_results(popt)

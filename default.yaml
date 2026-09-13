@@ -19,16 +19,16 @@ simulator:
   compiler:
     R: 1                                # Memory registers
     n: 1                                # Qubits per register
-    c_max: 10                            # Gate cost threshold
-    t_max_ns: 1000                   # Time threshold (nanoseconds)
+    c_max: 10                         # Gate cost threshold
+    t_max_ns: 5000                 # Time threshold (nanoseconds)
     
   # Simulation parameters
-  execution:
+  execution: 
     shots: 1024                          # Number of shots
-    initial_state: 1                    # 0=|0>, 1=|1>, 2=|+>, 3=|->
+    initial_state: 3                    # 0=|0>, 1=|1>, 2=|+>, 3=|->
     workload_type: delay             # Options: standard, delay, custom
-    pauli_twirling: FALSE               # Enable randomized compiling on SQM teleportation
-    twirling_variants: 5               # Random circuits per workload
+    pauli_twirling: False               # Enable randomized compiling on SQM teleportation
+    twirling_variants: 10               # Random circuits per workload
     twirling_seed: 42                 # Integer for reproducible variants
   
   # Thermal parameters (quantum noise model)
@@ -114,13 +114,13 @@ advanced:
 # ZNE folds only top-level unitary gates, never measure/reset/if_test/delay.
 mitigation:
   enabled: True
-  target_architecture: both            # Options: both, sqm, swap
+  target_architecture: sqm            # Options: both, sqm, swap
   hardware:
     max_shots_per_execution: 1024
   zne:
     enabled: True                      # Enable Zero Noise Extrapolation
-    noise_factors: [1,3, 5]               # Noise amplification factors (positive odd integers)
-    extrapolator: linear                # Extrapolation method: linear, polynomial, exponential
+    noise_factors: [1,3]               # Noise amplification factors (positive odd integers)
+    extrapolator: exponential                # Extrapolation method: linear, polynomial, exponential
     zne_seed: null                      # Seed for ZNE reproducibility (null = use global seed)
   rem: 
     enabled: True                      # Enable Readout Error Mitigation

@@ -290,7 +290,16 @@ class TmaxValidatorDelay:
             fidelities = []
             for variant in range(variant_count):
                 seed = None if self.twirling_seed is None else self.twirling_seed + variant * 1_000_003 + int(t_ns) * 1_009
-                fidelities.append(self.empirical_fidelity(t_ns, shots=shots, twirling_seed=seed))
+                f_emp_res = self.empirical_fidelity(t_ns, shots=shots, twirling_seed=seed)
+                if isinstance(f_emp_res, dict):
+                    if f_emp_res.get("f_zne") is not None:
+                        fidelities.append(f_emp_res["f_zne"])
+                    elif f_emp_res.get("f_rem") is not None:
+                        fidelities.append(f_emp_res["f_rem"])
+                    else:
+                        fidelities.append(f_emp_res["f_raw"])
+                else:
+                    fidelities.append(f_emp_res)
             f_emp = float(np.mean(fidelities))
             f_std = float(np.std(fidelities, ddof=1)) if variant_count > 1 else 0.0
             y_data.append(f_emp)
@@ -364,6 +373,8 @@ class TmaxValidatorDelay:
             writer.writerow(["Pauli Twirling", "enabled" if self.pauli_twirling else "disabled"])
             writer.writerow(["Twirling Variants", self.twirling_variants if self.pauli_twirling else 1])
             writer.writerow(["Twirling Seed", self.twirling_seed if self.twirling_seed is not None else "random"])
+            writer.writerow(["Mitigation ZNE", "enabled" if self.zne_enabled else "disabled"])
+            writer.writerow(["Mitigation REM", "enabled" if self.rem_enabled else "disabled"])
             writer.writerow([])
 
             writer.writerow(["Fit Parameters: F(t) = A * exp(-t/tau) + B"])
@@ -568,8 +579,17 @@ if __name__ == "__main__":
     # BACKEND MODE: "default" = FakeKyiv simulator | "IBM" = real IBM hardware
     # =========================================================================
     backend_mode = "default"  # Change to "IBM" to run on real IBM hardware
-    twirling = False           # Set to True to enable Pauli twirling
+    shots = 1024
+    twirling = True           # Set to True to enable Pauli twirling
     twirling_variants = 10    # Number of random circuits per delay point
+
+    # Mitigation toggles
+    use_zne = True
+    use_rem = False
+    mitigation_config = {
+        "zne": {"enabled": use_zne, "noise_factors": [1, 3], "extrapolator": "linear"},
+        "rem": {"enabled": use_rem}
+    }
 
     # =========================================================================
     # INITIAL STATE
@@ -580,36 +600,57 @@ if __name__ == "__main__":
     #   3 = |->  : qubit starts in |-> (X+H gates), H applied before measure,
     #              fidelity measured vs |1>
     # =========================================================================
-    initial_state = 3  # 0 = |0>, 1 = |1>, 2 = |+> (H), 3 = |-> (XH)
+    initial_state = 1  # 0 = |0>, 1 = |1>, 2 = |+> (H), 3 = |-> (XH)
 
     # 1. DEFINE THE ARCHITECTURE (N = Word width)
     N_qubits = 1
     target_fidelity = 0.75
+
+    # -- Phase 1: Delay characterization (curve_fit) ---------------------------
+    #    Define delay times directly in nanoseconds.
+    delay_list_ns = [
+        0, 100, 250, 500, 750, 1_000, 2_000, 4_000, 
+        6_000, 8_000, 10_000, 15_000, 20_000, 30_000, 
+        40_000, 50_000, 60_000, 80_000, 100_000, 
+        120_000, 150_000, 200_000, 400_000, 600_000]
+    
 
     _state_labels = {0: "|0>", 1: "|1>", 2: "|+> (H)", 3: "|-> (XH)"}
     state_label = _state_labels.get(initial_state, f"unknown({initial_state})")
     print(f"[Main] Running with initial_state={initial_state} ({state_label})")
     print(f"[Main] Pauli twirling: {'enabled' if twirling else 'disabled'} ({twirling_variants} variants)")
 
+    suffix = ""
+    if use_zne: suffix += "Z"
+    if use_rem: suffix += "R"
+    if twirling: suffix += "T"
+    if suffix: suffix = "_" + suffix
+    prefix = "sm" if backend_mode != "IBM" else "rb"
+
     if backend_mode == "IBM":
         ibm_backend = get_ibm_backend("ibm_kingston")
-        validator = TmaxValidatorDelay(N=N_qubits, backend=ibm_backend, initial_state=initial_state,
-                           pauli_twirling=twirling, twirling_variants=twirling_variants)
+        validator = TmaxValidatorDelay(
+            N=N_qubits,
+            backend=ibm_backend,
+            initial_state=initial_state,
+            pauli_twirling=twirling,
+            twirling_variants=twirling_variants,
+            mitigation_config=mitigation_config
+        )
     else:
-        validator = TmaxValidatorDelay(N=N_qubits, initial_state=initial_state,
-                           pauli_twirling=twirling, twirling_variants=twirling_variants)
+        validator = TmaxValidatorDelay(
+            N=N_qubits,
+            initial_state=initial_state,
+            pauli_twirling=twirling,
+            twirling_variants=twirling_variants,
+            mitigation_config=mitigation_config
+        )
 
-    # -- Phase 1: Delay characterization (curve_fit) ---------------------------
-    #    Define delay times directly in nanoseconds.
-    delay_list_ns = [
-        0, 500, 1_000, 2_000, 4_000, 6_000, 8_000,
-        10_000, 15_000, 20_000, 30_000, 40_000, 50_000,
-        60_000, 80_000, 100_000, 120_000, 150_000, 200_000, 400_000, 600_000]
 
     popt = validator.run_delay_characterization(
         delay_list_ns,
-        shots=4000,
-        plot_path=f"results/rb_decay_curve_delay_state{initial_state}_N{N_qubits}.png",
+        shots=shots,
+        plot_path=f"results/{prefix}_decay_curve_delay_state{initial_state}_N{N_qubits}{suffix}.png",
     )
 
     # -- Phase 2: Print results and validate model ----------------------------
@@ -620,7 +661,7 @@ if __name__ == "__main__":
     print(f"\n[FINAL RESULT]  T_MAX = {t_max:.2f} ns  ({t_max / 1000:.3f} us)")
 
     # -- Phase 4: Extrapolation validation ------------------------------------
-    t_test = 50_000  # ns
+    #t_test = 50_000  # ns
     #validator.run_extrapolation_test(t_test_ns=t_test)
-    print(f"\n  Interpretation:")
-    print(f"    If diff < 5%, the exponential model extrapolates correctly to t={t_test} ns.")
+    #print(f"\n  Interpretation:")
+    #print(f"    If diff < 5%, the exponential model extrapolates correctly to t={t_test} ns.")

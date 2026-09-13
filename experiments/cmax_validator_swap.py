@@ -338,7 +338,16 @@ class CMaxValidator:
             fidelities = []
             for variant in range(variant_count):
                 seed = None if self.twirling_seed is None else self.twirling_seed + variant * 1_000_003 + m * 1_009
-                fidelities.append(self.empirical_fidelity(m, shots=shots, twirling_seed=seed))
+                f_emp_res = self.empirical_fidelity(m, shots=shots, twirling_seed=seed)
+                if isinstance(f_emp_res, dict):
+                    if f_emp_res.get("f_zne") is not None:
+                        fidelities.append(f_emp_res["f_zne"])
+                    elif f_emp_res.get("f_rem") is not None:
+                        fidelities.append(f_emp_res["f_rem"])
+                    else:
+                        fidelities.append(f_emp_res["f_raw"])
+                else:
+                    fidelities.append(f_emp_res)
             f_emp = float(np.mean(fidelities))
             f_std = float(np.std(fidelities, ddof=1)) if variant_count > 1 else 0.0
             y_data.append(f_emp)
@@ -410,6 +419,8 @@ class CMaxValidator:
             writer.writerow(["Pauli Twirling", "enabled" if self.pauli_twirling else "disabled"])
             writer.writerow(["Twirling Variants", self.twirling_variants if self.pauli_twirling else 1])
             writer.writerow(["Twirling Seed", self.twirling_seed if self.twirling_seed is not None else "random"])
+            writer.writerow(["Mitigation ZNE", "enabled" if self.zne_enabled else "disabled"])
+            writer.writerow(["Mitigation REM", "enabled" if self.rem_enabled else "disabled"])
             writer.writerow([])
             
             # Write fit parameters
@@ -608,7 +619,7 @@ if __name__ == "__main__":
     backend_mode = "default"  # Change to "IBM" to run on real IBM hardware
     twirling = False           # Set to True to enable Pauli twirling
     twirling_variants = 10    # Number of random circuits per RB point
-
+    shots = 1024
     # =========================================================================
     # INITIAL STATE
     #   0 = |0⟩  : qubit starts in |0⟩, fidelity measured vs |0⟩
@@ -622,27 +633,55 @@ if __name__ == "__main__":
 
     # 1. DEFINE THE ARCHITECTURE (N = Word width)
     N_qubits = 1
-    
+    m_list = [0, 1, 2, 4, 6, 8, 10, 15, 20, 25, 30, 40, 50, 60, 80, 100]
+    #m_list = [0, 1, 2, 3, 4]
+
+    # Mitigation toggles
+    use_zne = True
+    use_rem = False
+    mitigation_config = {
+        "zne": {"enabled": use_zne, "noise_factors": [1, 3], "extrapolator": "exponential"},
+        "rem": {"enabled": use_rem}
+    } 
+        # Extrapolation method: linear, polynomial, exponential
+    # Noise amplification factors (positive odd integers)
 
     _state_labels = {0: "|0⟩", 1: "|1⟩", 2: "|+⟩ (H)", 3: "|-⟩ (XH)"}
     state_label = _state_labels.get(initial_state, f"unknown({initial_state})")
     print(f"[Main] Running with initial_state={initial_state} ({state_label})")
     print(f"[Main] Pauli twirling: {'enabled' if twirling else 'disabled'} ({twirling_variants} variants)")
 
+    suffix = ""
+    if use_zne: suffix += "Z"
+    if use_rem: suffix += "R"
+    if twirling: suffix += "T"
+    if suffix: suffix = "_" + suffix
+    prefix = "sm" if backend_mode != "IBM" else "rb"
+
     if backend_mode == "IBM":
         ibm_backend = get_ibm_backend("ibm_kingston")
-        validator = CMaxValidator(N=N_qubits, backend=ibm_backend, initial_state=initial_state,
-                      pauli_twirling=twirling, twirling_variants=twirling_variants)
+        validator = CMaxValidator(
+            N=N_qubits, 
+            backend=ibm_backend, 
+            initial_state=initial_state,
+            pauli_twirling=twirling, 
+            twirling_variants=twirling_variants,
+            mitigation_config=mitigation_config
+        )
     else:
-        validator = CMaxValidator(N=N_qubits, initial_state=initial_state,
-                      pauli_twirling=twirling, twirling_variants=twirling_variants)
+        validator = CMaxValidator(
+            N=N_qubits, 
+            initial_state=initial_state,
+            pauli_twirling=twirling, 
+            twirling_variants=twirling_variants,
+            mitigation_config=mitigation_config
+        )
 
     # -- Phase B.1: Complete RB characterization -------------------------------
-    m_list = [0, 1, 2, 4, 6, 8, 10, 15, 20, 25, 30, 40, 50, 60, 80, 100]
-    #m_list = [0, 1, 2, 3, 4]
+   
     popt = validator.run_rb_characterization(
-        m_list, shots=4000,
-        plot_path=f"results/rb_decay_curve_swap_state{initial_state}_n{N_qubits}.png",
+        m_list, shots=shots,
+        plot_path=f"results/{prefix}_decay_curve_swap_state{initial_state}_n{N_qubits}{suffix}.png",
     )
 
     # -- Phase B.2: Print results and validate model ---------------------------

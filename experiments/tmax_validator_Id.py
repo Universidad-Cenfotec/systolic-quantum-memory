@@ -16,11 +16,13 @@ from qiskit_ibm_runtime.fake_provider import FakeKyiv
 try:
     from experiments.utils.ibm_backend_helper import get_ibm_backend, run_on_ibm
     from src.utils.pauli_twirling import PauliTwirler
+    from src.mitigation import ReadoutMitigator, ZNEFolder, ZNEExtrapolator
 except ModuleNotFoundError:
     import sys
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
     from experiments.utils.ibm_backend_helper import get_ibm_backend, run_on_ibm
     from src.utils.pauli_twirling import PauliTwirler
+    from src.mitigation import ReadoutMitigator, ZNEFolder, ZNEExtrapolator
 
 
 # =============================================================================
@@ -73,6 +75,7 @@ class TmaxValidatorId:
         pauli_twirling: bool = False,
         twirling_seed: int | None = None,
         twirling_variants: int = 1,
+        mitigation_config: dict | None = None,
     ) -> None:
         """
         Args:
@@ -131,6 +134,17 @@ class TmaxValidatorId:
         self.p_fit: float = 0.0
         self.B_fit: float = 0.0
 
+        # 5. Error mitigation configuration (opt-in, default disabled)
+        self.mitigation_config = mitigation_config or {}
+        self.zne_enabled = self.mitigation_config.get("zne", {}).get("enabled", False)
+        self.rem_enabled = self.mitigation_config.get("rem", {}).get("enabled", False)
+        self.zne_noise_factors = self.mitigation_config.get("zne", {}).get("noise_factors", [1, 3])
+        self.zne_extrapolator_method = self.mitigation_config.get("zne", {}).get("extrapolator", "linear")
+        self.zne_seed = self.mitigation_config.get("zne", {}).get("zne_seed", None)
+        if self.zne_enabled or self.rem_enabled:
+            print(f"[TmaxValidatorId] Mitigation: ZNE={'ON' if self.zne_enabled else 'OFF'}, "
+                  f"REM={'ON' if self.rem_enabled else 'OFF'}")
+
     # -- Empirical fidelity (noisy idle via ID gates) -------------------------
 
     def empirical_fidelity(self, n_ids: int, shots: int = 4000,
@@ -181,7 +195,59 @@ class TmaxValidatorId:
             if measured == target_state:
                 fidelity_count += count
 
-        return fidelity_count / shots
+        f_raw = fidelity_count / shots
+
+        # ── Error mitigation (opt-in) ─────────────────────────────────────────
+        if not (self.zne_enabled or self.rem_enabled):
+            return f_raw
+
+        mitigation_result = {"f_raw": f_raw}
+
+        # REM: readout error mitigation
+        if self.rem_enabled:
+            try:
+                rem = ReadoutMitigator.from_backend_properties(
+                    self.backend, list(range(self.N))
+                )
+                corrected = rem.apply(counts)
+                rem_count = sum(
+                    c for b, c in corrected.items()
+                    if b.replace(' ', '')[-self.N:] == target_state
+                )
+                mitigation_result["f_rem"] = rem_count / max(sum(corrected.values()), 1)
+            except (ValueError, AttributeError) as e:
+                print(f"    [REM] Skipped: {e}")
+                mitigation_result["f_rem"] = None
+
+        # ZNE: fold at multiple noise factors and extrapolate
+        if self.zne_enabled:
+            folder = ZNEFolder(seed=self.zne_seed)
+            extrapolator = ZNEExtrapolator()
+            zne_raw_fids = {1: f_raw}
+
+            for factor in self.zne_noise_factors:
+                if factor == 1:
+                    continue
+                folded = folder.fold_circuit(qc_t, factor)
+                if self.is_ibm:
+                    zne_counts = run_on_ibm(folded, self.backend, shots=shots)
+                else:
+                    zne_job = self.simulator.run(folded, shots=shots)
+                    zne_counts = zne_job.result().get_counts()
+                zne_fid_count = sum(
+                    c for b, c in zne_counts.items()
+                    if b.replace(' ', '')[-self.N:] == target_state
+                )
+                zne_raw_fids[factor] = zne_fid_count / shots
+
+            factors_sorted = sorted(zne_raw_fids.keys())
+            values = [zne_raw_fids[f] for f in factors_sorted]
+            zne_result = extrapolator.extrapolate(factors_sorted, values, self.zne_extrapolator_method)
+            mitigation_result["f_zne"] = zne_result.bounded
+            mitigation_result["f_zne_raw"] = zne_result.raw
+            mitigation_result["zne_per_factor"] = zne_raw_fids
+
+        return mitigation_result
 
     # -- ID characterization (curve_fit) --------------------------------------
 
@@ -219,7 +285,16 @@ class TmaxValidatorId:
             fidelities = []
             for variant in range(variant_count):
                 seed = None if self.twirling_seed is None else self.twirling_seed + variant * 1_000_003 + m * 1_009
-                fidelities.append(self.empirical_fidelity(m, shots=shots, twirling_seed=seed))
+                f_emp_res = self.empirical_fidelity(m, shots=shots, twirling_seed=seed)
+                if isinstance(f_emp_res, dict):
+                    if f_emp_res.get("f_zne") is not None:
+                        fidelities.append(f_emp_res["f_zne"])
+                    elif f_emp_res.get("f_rem") is not None:
+                        fidelities.append(f_emp_res["f_rem"])
+                    else:
+                        fidelities.append(f_emp_res["f_raw"])
+                else:
+                    fidelities.append(f_emp_res)
             f_emp = float(np.mean(fidelities))
             f_std = float(np.std(fidelities, ddof=1)) if variant_count > 1 else 0.0
             y_data.append(f_emp)
@@ -292,6 +367,8 @@ class TmaxValidatorId:
             writer.writerow(["Pauli Twirling", "enabled" if self.pauli_twirling else "disabled"])
             writer.writerow(["Twirling Variants", self.twirling_variants if self.pauli_twirling else 1])
             writer.writerow(["Twirling Seed", self.twirling_seed if self.twirling_seed is not None else "random"])
+            writer.writerow(["Mitigation ZNE", "enabled" if self.zne_enabled else "disabled"])
+            writer.writerow(["Mitigation REM", "enabled" if self.rem_enabled else "disabled"])
             writer.writerow([])
 
             writer.writerow(["Fit Parameters: F(m) = A * p^m + B"])
@@ -505,6 +582,14 @@ if __name__ == "__main__":
     twirling = False           # Set to True to enable Pauli twirling
     twirling_variants = 10    # Number of random circuits per ID point
 
+    # Mitigation toggles
+    use_zne = False
+    use_rem = False
+    mitigation_config = {
+        "zne": {"enabled": use_zne, "noise_factors": [1, 3], "extrapolator": "linear"},
+        "rem": {"enabled": use_rem}
+    }
+
     # =========================================================================
     # CONFIGURATION (all noise parameters defined here)
     # =========================================================================
@@ -516,6 +601,14 @@ if __name__ == "__main__":
     T2_NS          = 35_887       # T2 dephasing  -- 35.887 us  = 35887 ns
     IDLE_TIME_NS   = 1000         # Duration of one ID idle period (ns)
 
+    initial_state = 1
+    suffix = ""
+    if use_zne: suffix += "Z"
+    if use_rem: suffix += "R"
+    if twirling: suffix += "T"
+    if suffix: suffix = "_" + suffix
+    prefix = "sm" if backend_mode != "IBM" else "rb"
+
     if backend_mode == "IBM":
         ibm_backend = get_ibm_backend("ibm_kingston")
         validator = TmaxValidatorId(
@@ -526,6 +619,7 @@ if __name__ == "__main__":
             backend=ibm_backend,
             pauli_twirling=twirling,
             twirling_variants=twirling_variants,
+            mitigation_config=mitigation_config,
         )
     else:
         validator = TmaxValidatorId(
@@ -541,9 +635,8 @@ if __name__ == "__main__":
     m_list = [0, 1, 2, 4, 6, 8, 10, 15, 20, 25, 30, 40, 50, 60, 80, 100]
 
     popt = validator.run_id_characterization(
-        m_list,
-        shots=4000,
-        plot_path=f"results/id_decay_curve_N{N_qubits}.png",
+        m_list, shots=4000,
+        plot_path=f"results/{prefix}_decay_curve_Id_state{initial_state}_n{N_qubits}{suffix}.png"
     )
 
     # -- Phase 2: Print results ------------------------------------------------
