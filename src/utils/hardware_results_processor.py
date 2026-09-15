@@ -96,7 +96,27 @@ def save_hardware_comparison_results(experiment_results: Dict[str, Any]) -> None
     twirling_enabled = params.get('pauli_twirling', False)
     twirling_variants = params.get('twirling_variants', 1)
     
-    csv_path = os.path.join(data_dir, f'hardware_comparison_{timestamp}.csv')
+    _mc = params.get('mitigation_config', {})
+    use_zne = _mc.get('zne', {}).get('enabled', False)
+    use_rem = _mc.get('rem', {}).get('enabled', False)
+    
+    suffix = ""
+    if use_zne: suffix += "Z"
+    if use_rem: suffix += "R"
+    if twirling_enabled: suffix += "T"
+    if suffix: suffix = "_" + suffix
+
+    prefix = "sm"
+    backend_info = experiment_results.get('backend_info', {})
+    backend_name = backend_info.get('backend_name', 'Unknown')
+    if 'Hardware' in backend_name or 'IBM' in backend_name or 'ibm_' in backend_name.lower() or 'kyiv' in backend_name.lower():
+        prefix = "rb"
+        
+    csv_base_name = f"{prefix}_hardware_comparison_state{init_state}{suffix}_{timestamp}"
+    summary_base_name = f"{prefix}_hardware_summary_state{init_state}{suffix}_{timestamp}"
+    graph_base_name = f"{prefix}_hardware_comparison_graph_state{init_state}{suffix}_{timestamp}"
+
+    csv_path = os.path.join(data_dir, f'{csv_base_name}.csv')
     
     with open(csv_path, 'w', newline='') as csvfile:
         fieldnames = ['Scenario', 'Configuration', 'Fidelity', 'Fidelity_Std', 'Twirling_Enabled',
@@ -136,7 +156,7 @@ def save_hardware_comparison_results(experiment_results: Dict[str, Any]) -> None
     # Generate summary CSV (adaptive to scenario count)
     # ──────────────────────────────────────────────────────────
     
-    summary_path = os.path.join(data_dir, f'hardware_summary_{timestamp}.csv')
+    summary_path = os.path.join(data_dir, f'{summary_base_name}.csv')
     
     with open(summary_path, 'w', newline='') as csvfile:
         writer = csv.writer(csvfile)
@@ -218,7 +238,7 @@ def save_hardware_comparison_results(experiment_results: Dict[str, Any]) -> None
     
     plt.tight_layout()
     
-    graph_path = os.path.join(results_dir, f'hardware_comparison_graph_{timestamp}.png')
+    graph_path = os.path.join(results_dir, f'{graph_base_name}.png')
     plt.savefig(graph_path, dpi=300, bbox_inches='tight')
     print(f"✓ Hardware comparison graph saved: {graph_path}")
     plt.close()
@@ -283,6 +303,25 @@ def save_hardware_multi_workload_results(all_workload_results: list,
     twirling_enabled = params.get('pauli_twirling', False)
     twirling_variants = params.get('twirling_variants', 1)
     
+    _mc = params.get('mitigation_config', {})
+    use_zne = _mc.get('zne', {}).get('enabled', False)
+    use_rem = _mc.get('rem', {}).get('enabled', False)
+    
+    suffix = ""
+    if use_zne: suffix += "Z"
+    if use_rem: suffix += "R"
+    if twirling_enabled: suffix += "T"
+    if suffix: suffix = "_" + suffix
+
+    prefix = "sm"
+    backend_name = backend_info.get('backend_name', 'Unknown')
+    if 'Hardware' in backend_name or 'IBM' in backend_name or 'ibm_' in backend_name.lower() or 'kyiv' in backend_name.lower():
+        prefix = "rb"
+        
+    csv_base_name = f"{prefix}_hardware_comparison_multi_state{init_state}{suffix}_{timestamp}"
+    summary_base_name = f"{prefix}_hardware_summary_multi_state{init_state}{suffix}_{timestamp}"
+    graph_base_name = f"{prefix}_hardware_comparison_multi_graph_state{init_state}{suffix}_{timestamp}"
+
     # ──────────────────────────────────────────────────────────
     # Aggregate all results for CSV
     # ──────────────────────────────────────────────────────────
@@ -371,7 +410,7 @@ def save_hardware_multi_workload_results(all_workload_results: list,
     # Generate unified CSV
     # ──────────────────────────────────────────────────────────
     
-    csv_path = os.path.join(data_dir, f'hardware_comparison_multi_{timestamp}.csv')
+    csv_path = os.path.join(data_dir, f'{csv_base_name}.csv')
     
     with open(csv_path, 'w', newline='') as csvfile:
         fieldnames = ['Scenario', 'Configuration', 'Fidelity', 'Fidelity_Std',
@@ -387,7 +426,7 @@ def save_hardware_multi_workload_results(all_workload_results: list,
     # Generate summary CSV
     # ──────────────────────────────────────────────────────────
     
-    summary_path = os.path.join(data_dir, f'hardware_summary_multi_{timestamp}.csv')
+    summary_path = os.path.join(data_dir, f'{summary_base_name}.csv')
     
     with open(summary_path, 'w', newline='') as csvfile:
         writer = csv.writer(csvfile)
@@ -419,6 +458,7 @@ def save_hardware_multi_workload_results(all_workload_results: list,
     # Generate comparison graph (all workloads x all scenarios)
     # ──────────────────────────────────────────────────────────
     
+    graph_path = None
     if all_scenarios_data:
         # Group data by workload first for easier visualization
         workload_dict = {}
@@ -493,7 +533,7 @@ def save_hardware_multi_workload_results(all_workload_results: list,
         
         plt.tight_layout()
         
-        graph_path = os.path.join(results_dir, f'hardware_comparison_multi_graph_{timestamp}.png')
+        graph_path = os.path.join(results_dir, f'{graph_base_name}.png')
         plt.savefig(graph_path, dpi=300, bbox_inches='tight')
         print(f"✓ Multi-workload comparison graph saved: {graph_path}")
         plt.close()

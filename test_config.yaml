@@ -1,0 +1,85 @@
+advanced:
+  cache_results: false
+  parallel_workloads: false
+  timeout_seconds: 3600
+global:
+  backend: simulator
+  seed: null
+hardware:
+  backend_name: ibm_fez
+  channel: ibm_quatum_platform
+  compiler:
+    R: 1
+    c_max: 10
+    n: 1
+    t_max_ns: 20000
+  execution:
+    initial_state: 1
+    pauli_twirling: false
+    scenarios: '1'
+    shots: 1024
+    twirling_seed: 42
+    twirling_variants: 10
+    workload_type: delay
+mitigation:
+  enabled: false
+  hardware:
+    max_shots_per_execution: 1024
+  rem:
+    enabled: false
+  target_architecture: sqm
+  zne:
+    enabled: true
+    extrapolator: exponential
+    noise_factors:
+    - 1
+    - 3
+    zne_seed: null
+output:
+  plot_format: png
+  results_dir: results/
+  save_csv: true
+  save_plots: true
+  verbose: true
+simulator:
+  compiler:
+    R: 1
+    c_max: 10
+    n: 1
+    t_max_ns: 30000
+  execution:
+    initial_state: 1
+    pauli_twirling: false
+    scenarios: null
+    shots: 1024
+    twirling_seed: 42
+    twirling_variants: 10
+    workload_type: delay
+  thermal:
+    T1_ns: 149149
+    T2_ns: 38194
+    idle_time_ns: 30000
+    use_default: true
+workloads:
+  custom:
+    description: Custom workload definitions
+    workloads:
+    - instructions:
+      - READ_0
+      - WRITE_0
+      - READ_0
+      name: Test Workload 1
+    - instructions:
+      - WRITE_0
+      - READ_0
+      - WRITE_0
+      - READ_0
+      name: Test Workload 2
+  delay:
+    delays_ns:
+    - 10
+    description: IDLE delay sweep
+  standard:
+    count: 10
+    description: Read-Write patterns with configurable multiplier
+    multiplier: 10

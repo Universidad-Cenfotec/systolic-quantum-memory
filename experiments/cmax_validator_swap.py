@@ -147,17 +147,11 @@ class CMaxValidator:
 
     # -- Empirical fidelity (noisy WorkPhase) ----------------------------------
 
-    def empirical_fidelity(self, n_swaps: int, shots: int = 4000,
-                           twirling_seed: int | None = None) -> float:
-        """
-        Measure fidelity after n_swaps SWAP cycles.
-
-        State preparation & measurement basis follow ``self.initial_state``:
-            0 = |0⟩  : no init gates,  no pre-measurement gate,  target '0'*N
-            1 = |1⟩  : X gates,        no pre-measurement gate,  target '1'*N
-            2 = |+⟩  : H gates,        H before measurement,     target '0'*N
-            3 = |-⟩  : X+H gates,      H before measurement,     target '1'*N
-        """
+    def build_empirical_circuit(
+        self,
+        n_swaps: int,
+        twirling_seed: int | None = None,
+    ):
         if n_swaps < 0:
             raise ValueError(f"n_swaps must be >= 0, received: {n_swaps}")
 
@@ -167,149 +161,71 @@ class CMaxValidator:
             seed=self.twirling_seed if twirling_seed is None else twirling_seed,
         )
 
-        # ── State preparation ──────────────────────────────────────────────────
-        if self.initial_state == 0:
-            pass  # |0⟩ is the default reset state; no gates needed
-        elif self.initial_state == 1:
-            for i in range(self.N):
-                qc.x(i)       # |0⟩ -> |1⟩
+        if self.initial_state == 1:
+            for i in range(self.N): qc.x(i)
         elif self.initial_state == 2:
-            for i in range(self.N):
-                twirler.h(qc, i)       # |0⟩ -> |+⟩
+            for i in range(self.N): twirler.h(qc, i)
         elif self.initial_state == 3:
             for i in range(self.N):
-                qc.x(i)       # |0⟩ -> |1⟩
-                twirler.h(qc, i)       # |1⟩ -> |-⟩
-        else:
-            raise ValueError(f"initial_state must be 0-3, received: {self.initial_state}")
+                qc.x(i)
+                twirler.h(qc, i)
 
         for _ in range(n_swaps):
             for i in range(self.N):
-                twirler.cx(qc, i, i + self.N)        # CNOT1
-                twirler.cx(qc, i + self.N, i)        # CNOT2
-                twirler.cx(qc, i, i + self.N)        # CNOT3
-            qc.barrier()   # Prevents inter-SWAP optimization by transpiler
+                twirler.cx(qc, i, i + self.N)
+                twirler.cx(qc, i + self.N, i)
+                twirler.cx(qc, i, i + self.N)
+            qc.barrier()
 
-        # -- Determine which register holds the data after n_swaps ---------------
-        # Data starts in mem_0 (qubits 0..N-1) and ping-pongs with each SWAP.
-        #   n_swaps=0          : data in mem_0 (qubits 0..N-1)
-        #   n_swaps=1 (odd)    : data in q_work (qubits N..2N-1)
-        #   n_swaps=2 (even)   : data back in mem_0
         if n_swaps % 2 == 0:
-            measure_qubits = list(range(self.N))            # mem_0
+            measure_qubits = list(range(self.N))
             reg_label = "mem_0"
         else:
-            measure_qubits = list(range(self.N, 2 * self.N)) # q_work
+            measure_qubits = list(range(self.N, 2 * self.N))
             reg_label = "q_work"
 
-        # ── Basis rotation before measurement (superposition states) ───────────
-        # For |+⟩ and |-⟩: apply H to rotate back to computational basis
         if self.initial_state in (2, 3):
             for i in measure_qubits:
                 twirler.h(qc, i)
 
         qc.measure(measure_qubits, range(self.N))
-        print(f"    [circuit] n_swaps={n_swaps} -> measuring {reg_label}")
-        #print(qc.draw(output="text"))  # Disabled: Unicode issues on Windows cp1252
 
-        # -- Hardware-Aware Qubit Mapping --------------------------------------
-        # Use QubitMapper to guarantee per-bit topology allocation
-        # Each qubit i of q_work connects to mem_i
-        # Structure per bit: q_work_i <- -> mem_0_i
         mapper = QubitMapper(self.backend)
         allocation = mapper.allocate_chain_topology(
-            chain_config=[
-                ("q_work", self.N),    # Operation register
-                ("mem_0", self.N),     # Storage register
-            ]
+            chain_config=[("q_work", self.N), ("mem_0", self.N)]
         )
 
-        # Build initial_layout: logical qubit -> physical qubit
-        # Logical qubits 0..N-1 are Storage Register (mem_0)
-        # Logical qubits N..2N-1 are Operation Register (q_work)
-        initial_layout: list[int] = [0] * (2 * self.N)
+        initial_layout = [0] * (2 * self.N)
         for i in range(self.N):
-            initial_layout[i] = allocation["mem_0"][i]          # Storage qubits
-            initial_layout[self.N + i] = allocation["q_work"][i] # Operation qubits
+            initial_layout[i] = allocation["mem_0"][i]
+            initial_layout[self.N + i] = allocation["q_work"][i]
 
-        # -- Transpile with qubit mapping --------------------------------------
         qc_t = transpile(qc, backend=self.backend, optimization_level=0, initial_layout=initial_layout)
 
-        if self.is_ibm:
-            # Run on real IBM hardware via SamplerV2
-            counts = run_on_ibm(qc_t, self.backend, shots=shots)
-        else:
-            # Run on local AerSimulator with noise model
-            sim  = AerSimulator(noise_model=self.noise_model)
-            job  = sim.run(qc_t, shots=shots)
-            counts = job.result().get_counts()
-
-        # ── Target state selection ─────────────────────────────────────────────
-        # states 0, 2 -> '0'*N  |  states 1, 3 -> '1'*N
         target_state = ('1' * self.N) if self.initial_state in (1, 3) else ('0' * self.N)
-        fidelity_count = 0
+        return qc_t, target_state, reg_label, initial_layout
 
-        for bitstring, count in counts.items():
-            # Extract first N bits safely (handles spaces and format changes)
-            measured_bits = MeasurementParser.extract_first_n_bits(bitstring, self.N)
-            if measured_bits == target_state:
-                fidelity_count += count
-
+    def calculate_fidelity(self, counts, target_state, reg_label, initial_layout, shots) -> dict:
+        fidelity_count = counts.get(target_state, 0)
         f_raw = fidelity_count / shots
 
-        # ── Error mitigation (opt-in) ─────────────────────────────────────────
-        if not (self.zne_enabled or self.rem_enabled):
-            return f_raw
+        if not getattr(self, "zne_enabled", False) and not getattr(self, "rem_enabled", False):
+            return {"f_raw": f_raw}
 
         mitigation_result = {"f_raw": f_raw}
-
-        # REM: apply readout error mitigation to final counts
-        if self.rem_enabled:
+        if getattr(self, "rem_enabled", False):
             try:
-                rem = ReadoutMitigator.from_backend_properties(
-                    self.backend, measure_qubits
-                )
+                if reg_label == "q_work":
+                    final_physical = [initial_layout[self.N + i] for i in range(self.N)]
+                else:
+                    final_physical = [initial_layout[i] for i in range(self.N)]
+                rem = ReadoutMitigator.from_backend_properties(self.backend, final_physical)
                 corrected = rem.apply(counts)
-                rem_count = sum(
-                    c for b, c in corrected.items()
-                    if MeasurementParser.extract_first_n_bits(b, self.N) == target_state
-                )
-                mitigation_result["f_rem"] = rem_count / max(sum(corrected.values()), 1)
-            except (ValueError, AttributeError) as e:
+                mitigation_result["f_rem"] = corrected.get(target_state, 0) / max(sum(corrected.values()), 1)
+            except Exception as e:
                 print(f"    [REM] Skipped: {e}")
                 mitigation_result["f_rem"] = None
-
-        # ZNE: fold circuit at multiple noise factors and extrapolate
-        if self.zne_enabled:
-            folder = ZNEFolder(seed=self.zne_seed)
-            extrapolator = ZNEExtrapolator()
-            zne_raw_fids = {1: f_raw}
-
-            for factor in self.zne_noise_factors:
-                if factor == 1:
-                    continue
-                folded = folder.fold_circuit(qc_t, factor)
-                if self.is_ibm:
-                    zne_counts = run_on_ibm(folded, self.backend, shots=shots)
-                else:
-                    zne_job = AerSimulator(noise_model=self.noise_model).run(folded, shots=shots)
-                    zne_counts = zne_job.result().get_counts()
-                zne_fid_count = sum(
-                    c for b, c in zne_counts.items()
-                    if MeasurementParser.extract_first_n_bits(b, self.N) == target_state
-                )
-                zne_raw_fids[factor] = zne_fid_count / shots
-
-            factors_sorted = sorted(zne_raw_fids.keys())
-            values = [zne_raw_fids[f] for f in factors_sorted]
-            zne_result = extrapolator.extrapolate(factors_sorted, values, self.zne_extrapolator_method)
-            mitigation_result["f_zne"] = zne_result.bounded
-            mitigation_result["f_zne_raw"] = zne_result.raw
-            mitigation_result["zne_per_factor"] = zne_raw_fids
-
         return mitigation_result
-
-    # -- RB Characterization (Magesan) -----------------------------------------
 
     def run_rb_characterization(
         self,
@@ -317,37 +233,83 @@ class CMaxValidator:
         shots: int = 4000,
         plot_path: str | None = "results/rb_decay_curve_swap.png",
     ) -> np.ndarray:
-       
-        print("=" * 65)
-        print("  SQM -- Phase B: RB Characterization (Magesan Model)")
-        print("=" * 65)
-        print(f"\n  Backend      : {self.backend.name}")
-        print(f"  Native gate  : {self.native_2q_gate.upper()}")
-        print(f"  p_swap_theory: {self.p_swap_teorico:.6f}  "
-              f"({self.p_swap_teorico * 100:.4f} %)")
-        print(f"\n  Measuring F_emp(m) for m = {m_list} ...")
-        print(f"  shots per point = {shots}\n")
-
-        # -- Empirical data collection -----------------------------------------
-        m_arr  = np.array(m_list, dtype=float)
-        y_data: list[float] = []
-        y_std: list[float] = []
+        print("=" * 70)
+        print("  SWAP -- Phase B: RB Characterization (Batch Mode)")
+        print("=" * 70)
+        print(f"  Backend      : {self.backend.name}")
+        print(f"  p_swap_theory: {self.p_swap_teorico:.6f}")
+        
         variant_count = self.twirling_variants if self.pauli_twirling else 1
+        all_circuits = []
+        metadata = []
+        
+        for m in m_list:
+            for variant in range(variant_count):
+                seed = None
+                if self.twirling_seed is not None:
+                    seed = self.twirling_seed + variant * 1_000_003 + m * 1_009
+                qc_t, target, reg_label, initial_layout = self.build_empirical_circuit(m, seed)
+                
+                all_circuits.append(qc_t)
+                metadata.append({"m": m, "variant": variant, "factor": 1, "target": target, "reg_label": reg_label, "ilayout": initial_layout})
+                
+                if getattr(self, "zne_enabled", False):
+                    folder = ZNEFolder(seed=self.zne_seed)
+                    for factor in self.zne_noise_factors:
+                        if factor == 1: continue
+                        folded = folder.fold_circuit(qc_t, factor)
+                        all_circuits.append(folded)
+                        metadata.append({"m": m, "variant": variant, "factor": factor, "target": target, "reg_label": reg_label, "ilayout": initial_layout})
 
+        print(f"  Generated {len(all_circuits)} circuits for batch execution.")
+        
+        if self.is_ibm:
+            all_counts = run_on_ibm(all_circuits, self.backend, shots=shots)
+        else:
+            sim = AerSimulator(noise_model=self.noise_model)
+            job = sim.run(all_circuits, shots=shots)
+            res = job.result()
+            all_counts = [res.get_counts(i) for i in range(len(all_circuits))]
+
+        results_map = {}
+        for count_dict, meta in zip(all_counts, metadata):
+            m, v, f = meta["m"], meta["variant"], meta["factor"]
+            if (m, v) not in results_map:
+                results_map[(m, v)] = {"raw_counts": None, "zne_counts": {}, "meta": meta}
+            if f == 1:
+                results_map[(m, v)]["raw_counts"] = count_dict
+            else:
+                results_map[(m, v)]["zne_counts"][f] = count_dict
+
+        m_arr = np.array(m_list, dtype=float)
+        y_data, y_std = [], []
+        
         for m in m_list:
             fidelities = []
             for variant in range(variant_count):
-                seed = None if self.twirling_seed is None else self.twirling_seed + variant * 1_000_003 + m * 1_009
-                f_emp_res = self.empirical_fidelity(m, shots=shots, twirling_seed=seed)
-                if isinstance(f_emp_res, dict):
-                    if f_emp_res.get("f_zne") is not None:
-                        fidelities.append(f_emp_res["f_zne"])
-                    elif f_emp_res.get("f_rem") is not None:
-                        fidelities.append(f_emp_res["f_rem"])
-                    else:
-                        fidelities.append(f_emp_res["f_raw"])
+                rm = results_map[(m, variant)]
+                meta = rm["meta"]
+                res = self.calculate_fidelity(rm["raw_counts"], meta["target"], meta["reg_label"], meta["ilayout"], shots)
+                
+                if getattr(self, "zne_enabled", False):
+                    extrapolator = ZNEExtrapolator()
+                    zne_fids = {1: res["f_raw"]}
+                    for f_zne, c_zne in rm["zne_counts"].items():
+                        r_zne = self.calculate_fidelity(c_zne, meta["target"], meta["reg_label"], meta["ilayout"], shots)
+                        zne_fids[f_zne] = r_zne["f_raw"]
+                        
+                    factors_sorted = sorted(zne_fids.keys())
+                    values = [zne_fids[fac] for fac in factors_sorted]
+                    zne_result = extrapolator.extrapolate(factors_sorted, values, self.zne_extrapolator_method)
+                    res["f_zne"] = zne_result.bounded
+                    
+                if "f_zne" in res and res["f_zne"] is not None:
+                    fidelities.append(res["f_zne"])
+                elif "f_rem" in res and res["f_rem"] is not None:
+                    fidelities.append(res["f_rem"])
                 else:
-                    fidelities.append(f_emp_res)
+                    fidelities.append(res["f_raw"])
+                    
             f_emp = float(np.mean(fidelities))
             f_std = float(np.std(fidelities, ddof=1)) if variant_count > 1 else 0.0
             y_data.append(f_emp)
@@ -355,36 +317,21 @@ class CMaxValidator:
             print(f"    m={m:3d}  F_emp = {f_emp:.6f}  std = {f_std:.6f} ({variant_count} variants)")
 
         y_arr = np.array(y_data, dtype=float)
-
-        # -- curve_fit adjustment ----------------------------------------------
-        p0     = [0.75, 0.90, self.B_ideal]
+        p0 = [0.75, 0.90, self.B_ideal]
         bounds = ([0.0, 0.0, 0.0], [1.0, 1.0, 1.0])
-
-        popt, _ = curve_fit(
-            rb_decay_model,
-            m_arr,
-            y_arr,
-            p0=p0,
-            bounds=bounds,
-            maxfev=10_000,
-        )
-
-        print(f"\n  Fit completed.")
+        popt, _ = curve_fit(rb_decay_model, m_arr, y_arr, p0=p0, bounds=bounds, maxfev=10_000)
+        
+        print("\n  Fit completed.")
         print(f"    A_fit = {popt[0]:.6f}")
         print(f"    p_fit = {popt[1]:.6f}")
         print(f"    B_fit = {popt[2]:.6f}")
 
-        # -- Plot (optional) ---------------------------------------------------
         if plot_path is not None:
             self._plot_rb_curve(m_arr, y_arr, popt, plot_path)
-
-        # -- Save results to CSV -----------------------------------------------
-        csv_path = plot_path.replace('.png', '.csv').replace('results', 'data') if plot_path else "data/rb_characterization_swap.csv"
-        self._save_rb_results_to_csv(m_arr, y_arr, popt, csv_path, np.array(y_std))
-
+            csv_path = plot_path.replace('.png', '.csv').replace('results', 'data')
+            self._save_rb_results_to_csv(m_arr, y_arr, popt, csv_path, np.array(y_std))
+            
         return popt
-
-    # -- Save RB results to CSV -----------------------------------------------
 
     def _save_rb_results_to_csv(
         self,
@@ -420,6 +367,9 @@ class CMaxValidator:
             writer.writerow(["Twirling Variants", self.twirling_variants if self.pauli_twirling else 1])
             writer.writerow(["Twirling Seed", self.twirling_seed if self.twirling_seed is not None else "random"])
             writer.writerow(["Mitigation ZNE", "enabled" if self.zne_enabled else "disabled"])
+            if getattr(self, "zne_enabled", False):
+                writer.writerow(["ZNE Noise Factors", getattr(self, "zne_noise_factors", "[]")])
+                writer.writerow(["ZNE Extrapolator", getattr(self, "zne_extrapolator_method", "N/A")])
             writer.writerow(["Mitigation REM", "enabled" if self.rem_enabled else "disabled"])
             writer.writerow([])
             
@@ -637,10 +587,10 @@ if __name__ == "__main__":
     #m_list = [0, 1, 2, 3, 4]
 
     # Mitigation toggles
-    use_zne = True
+    use_zne = False
     use_rem = False
     mitigation_config = {
-        "zne": {"enabled": use_zne, "noise_factors": [1, 3], "extrapolator": "exponential"},
+        "zne": {"enabled": use_zne, "noise_factors": [1, 3,5], "extrapolator": "exponential"},
         "rem": {"enabled": use_rem}
     } 
         # Extrapolation method: linear, polynomial, exponential

@@ -50,6 +50,8 @@ def run_mitigation_flow(
 
     # Determine max_shots
     max_shots_cfg = mitigation_config.get('hardware', {}).get('max_shots_per_execution', MAX_HARDWARE_SHOTS)
+    # Ensure simulator runs can use their configured shots without ValueError
+    executor_max_shots = max(max_shots_cfg, shots)
 
     # Initialize executor
     executor = MitigationExecutor(
@@ -57,7 +59,7 @@ def run_mitigation_flow(
         folder=ZNEFolder(),
         extrapolator=ZNEExtrapolator(),
         readout_mitigator=readout_mitigator,
-        max_shots=max_shots_cfg
+        max_shots=executor_max_shots
     )
 
     # ZNE Seed

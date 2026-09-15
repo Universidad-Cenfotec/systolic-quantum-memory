@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import warnings
-from typing import NamedTuple, Sequence
+from typing import Any, NamedTuple, Sequence
 
 import numpy as np
 
@@ -23,6 +23,7 @@ class ZNEExtrapolator:
         noise_factors: Sequence[float],
         values: Sequence[float],
         method: str = "linear",
+        **kwargs: Any,
     ) -> ExtrapolationResult:
         """Return the fitted value at noise factor zero.
 
@@ -58,10 +59,20 @@ class ZNEExtrapolator:
             coefficients = np.polyfit(factors, observations, len(factors) - 1)
             estimate = np.polyval(coefficients, 0.0)
         elif method == "exponential":
-            if np.any(observations <= 0):
-                raise ValueError("exponential extrapolation requires positive values")
-            coefficients = np.polyfit(factors, np.log(observations), 1)
-            estimate = float(np.exp(np.polyval(coefficients, 0.0)))
+            asymptote = kwargs.get("asymptote", 0.5)
+            adjusted_obs = np.asarray(observations, dtype=float) - asymptote
+            
+            # An exponential decay y = A * exp(-bx) requires all adjusted values to be > 0.
+            # If the signal is within 3% of the completely mixed asymptote, it is dominated
+            # by shot noise (for ~1024 shots, error is ~3%). Exponential log-fits on shot 
+            # noise produce wild spikes (extrapolating to >1.0).
+            if np.any(adjusted_obs <= 0.03):
+                # Fall back to linear extrapolation for points deep in the noise floor
+                coefficients = np.polyfit(factors, observations, 1)
+                estimate = float(np.polyval(coefficients, 0.0))
+            else:
+                coefficients = np.polyfit(factors, np.log(adjusted_obs), 1)
+                estimate = float(np.exp(np.polyval(coefficients, 0.0)) + asymptote)
         else:
             raise ValueError(f"unknown extrapolation method: {method}")
 

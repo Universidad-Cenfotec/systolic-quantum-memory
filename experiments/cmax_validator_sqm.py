@@ -170,41 +170,28 @@ class CMaxValidator:
 
     # -- Empirical fidelity with SystolicTeleportation protocol ----------------
 
-    def empirical_fidelity(self, m_swaps: int, shots: int = 4000) -> float:
-       
+    def build_empirical_circuit(
+        self,
+        m_swaps: int,
+    ):
         if m_swaps < 0:
             raise ValueError(f"m_swaps must be >= 0, received: {m_swaps}")
 
-        # -- Build 4-register quantum circuit (same as cmax_validator.py) -------
-        reg_s = QuantumRegister(self.N, name="S")      # Storage
-        reg_o = QuantumRegister(self.N, name="O")      # Operation
-        reg_la = QuantumRegister(self.N, name="LA")    # Link Alice
-        reg_lb = QuantumRegister(self.N, name="LB")    # Link Bob
+        reg_s = QuantumRegister(self.N, name="S")
+        reg_o = QuantumRegister(self.N, name="O")
+        reg_la = QuantumRegister(self.N, name="LA")
+        reg_lb = QuantumRegister(self.N, name="LB")
         
-        cr_lb = ClassicalRegister(self.N, name="cr_lb")         # LB measurements
-        
+        cr_lb = ClassicalRegister(self.N, name="cr_lb")
         qc = QuantumCircuit(reg_s, reg_o, reg_la, reg_lb, cr_lb)
 
-        # --------- PHASE 1: PREPARATION (all |0>) - implicit by circuit initialization
-        
-        # --------- PHASE 2: m SWAP CYCLES (Storage <-> Operation)
-        
         for _ in range(m_swaps):
             for i in range(self.N):
-                q_s = reg_s[i]
-                q_o = reg_o[i]
-                
-                # SWAP implementation: 3 CNOTs
-                qc.cx(q_s, q_o)
-                qc.cx(q_o, q_s)
-                qc.cx(q_s, q_o)
-            
-            qc.barrier()  # Prevent inter-SWAP optimization
+                qc.cx(reg_s[i], reg_o[i])
+                qc.cx(reg_o[i], reg_s[i])
+                qc.cx(reg_s[i], reg_o[i])
+            qc.barrier()
 
-        # --------- PHASE 3: TELEPORTATION PROTOCOL (S -> LA -> LB)
-        # Use SystolicTeleportation.build_circuit() which includes active reset
-        # This replaces manual EPR, BSM, feed-forward with unified implementation
-        
         cr_bell = ClassicalRegister(2 * self.N, name="cr_bell")
         qc.add_register(cr_bell)
         
@@ -218,119 +205,53 @@ class CMaxValidator:
         
         qc.barrier()
         
-        # --------- PHASE 4: FINAL MEASUREMENT (LinkBob only)
-        
-        # Measure LinkBob register (final state for fidelity calculation)
         for i in range(self.N):
             qc.measure(reg_lb[i], cr_lb[i])
 
-        # --------- HARDWARE-AWARE QUBIT MAPPING
         chains = self._get_physical_chains()
-        
         initial_layout = [0] * (4 * self.N)
         for i, (phys_s, phys_o, phys_la, phys_lb) in enumerate(chains):
-            initial_layout[i] = phys_s                           # Storage
-            initial_layout[self.N + i] = phys_o                  # Operation
-            initial_layout[2 * self.N + i] = phys_la             # Link Alice
-            initial_layout[3 * self.N + i] = phys_lb             # Link Bob
+            initial_layout[i] = phys_s
+            initial_layout[self.N + i] = phys_o
+            initial_layout[2 * self.N + i] = phys_la
+            initial_layout[3 * self.N + i] = phys_lb
             
-        # --------- TRANSPILE AND SIMULATE
-        
         qc_t = transpile(qc, backend=self.backend, optimization_level=0, initial_layout=initial_layout)
 
-        if self.is_ibm:
-            # Run on real IBM hardware via SamplerV2
-            counts = run_on_ibm(qc_t, self.backend, shots=shots)
-        else:
-            # Run on local AerSimulator with noise model
-            sim  = AerSimulator(noise_model=self.noise_model)
-            job  = sim.run(qc_t, shots=shots)
-            counts = job.result().get_counts()
-
-        # --------- DIRECT VERIFICATION OF TELEPORTED STATUS
-        
-        # Build layout for register extraction (Little-Endian aware)
-        # Registers added in order: cr_lb (first), then cr_bell (second)
-        # Qiskit Little-Endian: last added appears first in bitstring
         register_layout = MeasurementParser.build_register_layout_from_order(
             register_names=["cr_lb", "cr_bell"],
             register_sizes=[self.N, 2 * self.N],
             reverse_for_endianness=True
         )
-        
-        fidelity_count = 0
         target_state = '0' * self.N
-        
+        return qc_t, register_layout, target_state, initial_layout
+
+    def calculate_fidelity(self, counts, register_layout, target_state, initial_layout, shots) -> dict:
+        fidelity_count = 0
         for bitstring, count in counts.items():
-            # Extract Link Bob bits using the register layout (endianness-safe)
-            lb_bits = MeasurementParser.extract_register_bits(
-                bitstring, 
-                "cr_lb", 
-                register_layout
-            )
-            
+            lb_bits = MeasurementParser.extract_register_bits(bitstring, "cr_lb", register_layout)
             if lb_bits == target_state:
                 fidelity_count += count
-                
         f_raw = fidelity_count / shots
 
-        # --------- ERROR MITIGATION (opt-in)
-        if not (self.zne_enabled or self.rem_enabled):
-            return f_raw
+        if not getattr(self, "zne_enabled", False) and not getattr(self, "rem_enabled", False):
+            return {"f_raw": f_raw}
 
         mitigation_result = {"f_raw": f_raw}
-
-        # REM: apply readout error mitigation to final counts only
-        if self.rem_enabled:
+        if getattr(self, "rem_enabled", False):
             try:
-                # Build layout: physical qubits of Link Bob register
                 lb_physical = [initial_layout[3 * self.N + i] for i in range(self.N)]
-                rem = ReadoutMitigator.from_backend_properties(
-                    self.backend, lb_physical
-                )
+                rem = ReadoutMitigator.from_backend_properties(self.backend, lb_physical)
                 corrected = rem.apply(counts)
                 rem_count = 0
                 for b, c in corrected.items():
                     lb_bits = MeasurementParser.extract_register_bits(b, "cr_lb", register_layout)
-                    if lb_bits == target_state:
-                        rem_count += c
+                    if lb_bits == target_state: rem_count += c
                 mitigation_result["f_rem"] = rem_count / max(sum(corrected.values()), 1)
-            except (ValueError, AttributeError) as e:
+            except Exception as e:
                 print(f"    [REM] Skipped: {e}")
                 mitigation_result["f_rem"] = None
-
-        # ZNE: fold transpiled circuit at multiple noise factors
-        if self.zne_enabled:
-            folder = ZNEFolder(seed=self.zne_seed)
-            extrapolator = ZNEExtrapolator()
-            zne_raw_fids = {1: f_raw}
-
-            for factor in self.zne_noise_factors:
-                if factor == 1:
-                    continue
-                folded = folder.fold_circuit(qc_t, factor)
-                if self.is_ibm:
-                    zne_counts = run_on_ibm(folded, self.backend, shots=shots)
-                else:
-                    zne_job = AerSimulator(noise_model=self.noise_model).run(folded, shots=shots)
-                    zne_counts = zne_job.result().get_counts()
-                zne_fid_count = 0
-                for b, c in zne_counts.items():
-                    lb_bits = MeasurementParser.extract_register_bits(b, "cr_lb", register_layout)
-                    if lb_bits == target_state:
-                        zne_fid_count += c
-                zne_raw_fids[factor] = zne_fid_count / shots
-
-            factors_sorted = sorted(zne_raw_fids.keys())
-            values = [zne_raw_fids[f] for f in factors_sorted]
-            zne_result = extrapolator.extrapolate(factors_sorted, values, self.zne_extrapolator_method)
-            mitigation_result["f_zne"] = zne_result.bounded
-            mitigation_result["f_zne_raw"] = zne_result.raw
-            mitigation_result["zne_per_factor"] = zne_raw_fids
-
         return mitigation_result
-
-    # -- RB Characterization (Magesan) -----------------------------------------
 
     def run_rb_characterization(
         self,
@@ -338,69 +259,95 @@ class CMaxValidator:
         shots: int = 2048,
         plot_path: str | None = "results/rb_decay_curve_.png",
     ) -> np.ndarray:
-
         print("=" * 75)
-        print("  SQM -- Phase B: RB Characterization with SystolicTeleportation")
+        print("  SQM -- Phase B: RB Characterization (Batch Mode)")
         print("=" * 75)
-        print(f"\n  Backend      : {self.backend.name}")
-        print(f"  Architecture : 4 registers * {self.N} qubits = {4*self.N} total qubits")
-        print(f"                 (Storage, Operation, LinkAlice, LinkBob)")
-        print(f"  Hilbert dim  : d = 2^{self.N} = {self.d}")
-        print(f"  Native gate  : {self.native_2q_gate.upper()}")
-        print(f"  p_swap_theory: {self.p_swap_teorico:.6f}  "
-              f"({self.p_swap_teorico * 100:.4f} %)")
-        print(f"\n  Measuring F_emp(m) for m = {m_list} with SystolicTeleportation...")
-        print(f"  shots per point = {shots}\n")
-
-        # -- Empirical data collection -----------------------------------------
-        m_arr  = np.array(m_list, dtype=float)
-        y_data: list[float] = []
-
+        print(f"  Backend      : {self.backend.name}")
+        print(f"  p_swap_theory: {self.p_swap_teorico:.6f}")
+        
+        all_circuits = []
+        metadata = []
+        
         for m in m_list:
-            f_emp_res = self.empirical_fidelity(m, shots=shots)
-            if isinstance(f_emp_res, dict):
-                if f_emp_res.get("f_zne") is not None:
-                    f_emp = f_emp_res["f_zne"]
-                elif f_emp_res.get("f_rem") is not None:
-                    f_emp = f_emp_res["f_rem"]
-                else:
-                    f_emp = f_emp_res["f_raw"]
+            qc_t, layout, target, initial_layout = self.build_empirical_circuit(m)
+            all_circuits.append(qc_t)
+            metadata.append({"m": m, "factor": 1, "layout": layout, "target": target, "ilayout": initial_layout})
+            
+            if getattr(self, "zne_enabled", False):
+                folder = ZNEFolder(seed=self.zne_seed)
+                for factor in self.zne_noise_factors:
+                    if factor == 1: continue
+                    folded = folder.fold_circuit(qc_t, factor)
+                    all_circuits.append(folded)
+                    metadata.append({"m": m, "factor": factor, "layout": layout, "target": target, "ilayout": initial_layout})
+
+        print(f"  Generated {len(all_circuits)} circuits for batch execution.")
+        
+        if self.is_ibm:
+            all_counts = run_on_ibm(all_circuits, self.backend, shots=shots)
+        else:
+            sim = AerSimulator(noise_model=self.noise_model)
+            job = sim.run(all_circuits, shots=shots)
+            res = job.result()
+            all_counts = [res.get_counts(i) for i in range(len(all_circuits))]
+
+        results_map = {}
+        for count_dict, meta in zip(all_counts, metadata):
+            m, f = meta["m"], meta["factor"]
+            if m not in results_map:
+                results_map[m] = {"raw_counts": None, "zne_counts": {}, "meta": meta}
+            
+            if f == 1:
+                results_map[m]["raw_counts"] = count_dict
             else:
-                f_emp = f_emp_res
+                results_map[m]["zne_counts"][f] = count_dict
+
+        m_arr = np.array(m_list, dtype=float)
+        y_data = []
+        
+        for m in m_list:
+            rm = results_map[m]
+            meta = rm["meta"]
+            res = self.calculate_fidelity(rm["raw_counts"], meta["layout"], meta["target"], meta["ilayout"], shots)
+            
+            if getattr(self, "zne_enabled", False):
+                extrapolator = ZNEExtrapolator()
+                zne_fids = {1: res["f_raw"]}
+                for f_zne, c_zne in rm["zne_counts"].items():
+                    r_zne = self.calculate_fidelity(c_zne, meta["layout"], meta["target"], meta["ilayout"], shots)
+                    zne_fids[f_zne] = r_zne["f_raw"]
+                    
+                factors_sorted = sorted(zne_fids.keys())
+                values = [zne_fids[fac] for fac in factors_sorted]
+                zne_result = extrapolator.extrapolate(factors_sorted, values, self.zne_extrapolator_method)
+                res["f_zne"] = zne_result.bounded
+                
+            if "f_zne" in res and res["f_zne"] is not None:
+                f_emp = res["f_zne"]
+            elif "f_rem" in res and res["f_rem"] is not None:
+                f_emp = res["f_rem"]
+            else:
+                f_emp = res["f_raw"]
+                
             y_data.append(f_emp)
             print(f"    m={m:3d}  F_emp = {f_emp:.6f}")
 
         y_arr = np.array(y_data, dtype=float)
-
-        # -- curve_fit adjustment ----------------------------------------------
-        p0     = [0.75, 0.90, self.B_ideal]
+        p0 = [0.75, 0.90, self.B_ideal]
         bounds = ([0.0, 0.0, 0.0], [1.0, 1.0, 1.0])
+        popt, _ = curve_fit(rb_decay_model, m_arr, y_arr, p0=p0, bounds=bounds, maxfev=10_000)
 
-        popt, _ = curve_fit(
-            rb_decay_model,
-            m_arr,
-            y_arr,
-            p0=p0,
-            bounds=bounds,
-            maxfev=10_000,
-        )
-
-        print(f"\n  Fit completed.")
+        print("\n  Fit completed.")
         print(f"    A_fit = {popt[0]:.6f}")
         print(f"    p_fit = {popt[1]:.6f}")
         print(f"    B_fit = {popt[2]:.6f}")
 
-        # -- Plot (optional) ---------------------------------------------------
         if plot_path is not None:
             self._plot_rb_curve(m_arr, y_arr, popt, plot_path)
-
-        # -- Save results to CSV -----------------------------------------------
-        csv_path = plot_path.replace('.png', '.csv').replace('results', 'data') if plot_path else "data/rb_characterization.csv"
-        self._save_rb_results_to_csv(m_arr, y_arr, popt, csv_path)
-
+            csv_path = plot_path.replace('.png', '.csv').replace('results', 'data')
+            self._save_rb_results_to_csv(m_arr, y_arr, popt, csv_path)
+            
         return popt
-
-    # -- Save RB results to CSV -----------------------------------------------
 
     def _save_rb_results_to_csv(
         self,
@@ -565,7 +512,17 @@ class CMaxValidator:
               f"r_empirical = {self.r_empirico/(3*self.N):.6f}")
 
         f_th  = self.theoretical_fidelity(n)
-        f_emp = self.empirical_fidelity(n)
+        
+        qc_t, layout, target, initial_layout = self.build_empirical_circuit(n)
+        if self.is_ibm:
+            from experiments.utils.ibm_backend_helper import run_on_ibm
+            counts = run_on_ibm([qc_t], self.backend, shots=4000)[0]
+        else:
+            job = self.simulator.run(qc_t, shots=4000)
+            counts = job.result().get_counts()
+        res = self.calculate_fidelity(counts, layout, target, initial_layout, 4000)
+        f_emp = res.get('f_zne') or res.get('f_rem') or res.get('f_raw')
+    
         diff  = abs(f_th - f_emp)
         rel   = (diff / f_emp * 100) if f_emp > 0 else float("inf")
         print(f"\n  [n={n}]  F_model={f_th:.6f}  F_emp={f_emp:.6f}  "

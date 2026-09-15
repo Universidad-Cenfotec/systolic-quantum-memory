@@ -46,7 +46,7 @@ class SwapFlowCompiler:
         t_max_ns: float,
         backend_manager: BackendInterface,
         initial_state: int = 0,
-        mitigation_config: Dict[str, Any] = None,
+        mitigation_config: Dict[str, Any] | None = None,
     ):
        
         self.R = R
@@ -310,6 +310,56 @@ class SwapFlowCompiler:
 
         print(f"[Compilation] Workload processing complete")
         return qc
+
+    # --------------------------------------------------------------
+    # BATCH GENERATION
+    # --------------------------------------------------------------
+
+    def generate_executable_circuit(self, circuit: QuantumCircuit) -> Tuple[QuantumCircuit, str]:
+        """
+        Prepare a compiled circuit for batch execution.
+        Appends measurement logic on the operation register, maps to hardware
+        topology, and determines the target state bitstring.
+
+        Parameters
+        ----------
+        circuit : QuantumCircuit
+            Compiled quantum circuit (output of compile_workload)
+
+        Returns
+        -------
+        Tuple[QuantumCircuit, str]
+            (Transpiled circuit ready for execution, target bitstring for fidelity calculation)
+        """
+        random.seed(42)
+        np.random.seed(42)
+        
+        qc_measured = circuit.copy()
+        cr_final = ClassicalRegister(self.n, name="final_meas")
+        qc_measured.add_register(cr_final)
+
+        qr_work = self._built_registers["q_work"]
+        if self.initial_state in (2, 3):
+            for qubit in qr_work:
+                qc_measured.h(qubit)
+
+        for i in range(self.n):
+            qc_measured.measure(qr_work[i], cr_final[i])
+
+        initial_layout = self._get_initial_layout(qc_measured)
+        
+        qc_transpiled = transpile(
+            qc_measured,
+            backend=self.backend,
+            optimization_level=0,
+            initial_layout=initial_layout,
+            seed_transpiler=42
+        )
+
+        target_state_bits = self.n
+        target_state = ('1' * target_state_bits) if self.initial_state in (1, 3) else ('0' * target_state_bits)
+        
+        return qc_transpiled, target_state
 
     # --------------------------------------------------------------
     # EXECUTION VIA BACKEND MANAGER (WITH OPTIONAL MITIGATION)

@@ -152,6 +152,39 @@ class MockJob:
         return self.mock_result.get_counts()
 
 
+class MockBatchJob:
+    """
+    Wrapper job object for batch execution.
+    Provides get_counts(i) interface for backward compatibility with list-based executions.
+    """
+
+    def __init__(self, mock_results):
+        """
+        Initialize MockBatchJob wrapper.
+
+        Parameters
+        ----------
+        mock_results : list[MockResult]
+            List of MockResult wrappers
+        """
+        self.mock_results = mock_results
+
+    def get_counts(self, i: int) -> Dict[str, int]:
+        """
+        Get measurement counts for the i-th circuit in the batch.
+
+        Parameters
+        ----------
+        i : int
+            Index of the circuit in the batch
+
+        Returns
+        -------
+        Dict[str, int]
+            Dictionary of combined bitstrings to count values for the i-th circuit
+        """
+        return self.mock_results[i].get_counts()
+
 class IBMHardwareBackend(BackendInterface):
     """
     Real IBM Quantum hardware backend using SamplerV2 primitive.
@@ -506,6 +539,65 @@ class IBMHardwareBackend(BackendInterface):
         except Exception as e:
             raise RuntimeError(
                 f"[Execution] Failed to execute circuit on IBM Quantum: {str(e)}. "
+                "Check backend status and circuit validity."
+            )
+
+    def run_batch(
+        self,
+        circuits: list[QuantumCircuit],
+        shots: int = 1024,
+        seed: int = 42,
+    ) -> MockBatchJob:
+        """
+        Submit a batch of transpiled circuits to IBM Quantum hardware.
+
+        Uses SamplerV2 primitive for execution. This method queues the job
+        and waits for results.
+
+        Parameters
+        ----------
+        circuits : list[QuantumCircuit]
+            List of transpiled circuits ready for hardware execution
+        shots : int, optional
+            Number of shots (default: 1024)
+        seed : int, optional
+            Random seed (note: may not be supported on all hardware)
+
+        Returns
+        -------
+        MockBatchJob
+            Wrapper batch job object with get_counts(i) interface
+
+        Raises
+        ------
+        RuntimeError
+            If job submission fails or execution times out
+        """
+        try:
+            print(f"[Execution] Submitting batch of {len(circuits)} circuits to IBM Quantum backend ({self.backend.name})...")
+
+            # Configure shots for SamplerV2 V2 API
+            self.sampler.options.default_shots = shots  # type: ignore
+
+            # Submit circuits to hardware
+            job = self.sampler.run(circuits)
+            job_id = job.job_id()
+
+            print(f"[Execution] Batch job submitted with ID: {job_id}")
+            print(f"[Execution] Waiting for results from queue...")
+
+            # Wait for job completion
+            result = job.result()
+
+            print(f"[Execution] Batch job {job_id} completed successfully")
+
+            # Return wrapped job with MockBatchJob interface
+            mock_results = [MockResult(pub_res) for pub_res in result]
+            return MockBatchJob(mock_results)
+
+        except Exception as e:
+            raise RuntimeError(
+                f"[Execution] Failed to execute batch on IBM Quantum: {str(e)}. "
                 "Check backend status and circuit validity."
             )
 

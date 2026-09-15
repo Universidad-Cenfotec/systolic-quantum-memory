@@ -31,7 +31,7 @@ class MitigationExecutor:
         self.readout_mitigator = readout_mitigator
         if max_shots < 1:
             raise ValueError("max_shots must be positive")
-        self.max_shots = min(max_shots, MAX_HARDWARE_SHOTS)
+        self.max_shots = max_shots
 
     @staticmethod
     def _fidelity(counts: Dict[str, int | float], target_state: str) -> float:
@@ -120,14 +120,16 @@ class MitigationExecutor:
         }
         result.update(metadata)
         if zne_enabled:
+            # Asymptote for maximum entropy state of n qubits
+            asymptote = 1.0 / (2 ** len(target_state))
             zne_result = self.extrapolator.extrapolate(
-                factors, [raw_fidelities[f] for f in factors], extrapolator
+                factors, [raw_fidelities[f] for f in factors], extrapolator, asymptote=asymptote
             )
             result["zne_fidelity"] = zne_result.bounded
             result["zne_fidelity_raw"] = zne_result.raw
             if rem_enabled:
                 zne_rem_result = self.extrapolator.extrapolate(
-                    factors, [rem_fidelities[f] for f in factors], extrapolator
+                    factors, [rem_fidelities[f] for f in factors], extrapolator, asymptote=asymptote
                 )
                 result["zne_rem_fidelity"] = zne_rem_result.bounded
                 result["zne_rem_fidelity_raw"] = zne_rem_result.raw

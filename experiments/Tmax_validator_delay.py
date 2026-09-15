@@ -131,18 +131,11 @@ class TmaxValidatorDelay:
 
     # -- Empirical fidelity (noisy idle) --------------------------------------
 
-    def empirical_fidelity(self, delay_ns: float, shots: int = 4000,
-                           twirling_seed: int | None = None) -> float:
-        """
-        Measure fidelity after idling for *delay_ns* nanoseconds.
-
-        State preparation & measurement basis follow ``self.initial_state``:
-
-            0 = |0>  : no init gates,  no pre-measurement gate,  target '0'*N
-            1 = |1>  : X gates,        no pre-measurement gate,  target '1'*N
-            2 = |+>  : H gates,        H before measurement,     target '0'*N
-            3 = |->  : X+H gates,      H before measurement,     target '1'*N
-        """
+    def build_empirical_circuit(
+        self,
+        delay_ns: float,
+        twirling_seed: int | None = None,
+    ):
         if delay_ns < 0:
             raise ValueError(f"delay_ns must be >= 0, received: {delay_ns}")
 
@@ -152,108 +145,56 @@ class TmaxValidatorDelay:
             seed=self.twirling_seed if twirling_seed is None else twirling_seed,
         )
 
-        # ── State preparation ─────────────────────────────────────────────────
-        if self.initial_state == 0:
-            pass  # |0> is the default reset state; no gates needed
-        elif self.initial_state == 1:
-            for i in range(self.N):
-                qc.x(i)       # |0> -> |1>
+        if self.initial_state == 1:
+            for i in range(self.N): qc.x(i)
         elif self.initial_state == 2:
-            for i in range(self.N):
-                twirler.h(qc, i)       # |0> -> |+>
+            for i in range(self.N): twirler.h(qc, i)
         elif self.initial_state == 3:
             for i in range(self.N):
-                qc.x(i)       # |0> -> |1>
-                twirler.h(qc, i)       # |1> -> |->
-        else:
-            raise ValueError(f"initial_state must be 0-3, received: {self.initial_state}")
+                qc.x(i)
+                twirler.h(qc, i)
 
-        # ── Idle delay ────────────────────────────────────────────────────────
         if delay_ns > 0:
             for i in range(self.N):
                 qc.delay(int(delay_ns), i, unit='ns')
 
-        # ── Basis rotation before measurement (superposition states) ──────────
-        # For |+> and |->: apply H to rotate back to computational basis
         if self.initial_state in (2, 3):
             for i in range(self.N):
                 twirler.h(qc, i)
 
         qc.measure(range(self.N), range(self.N))
-        #print(qc.draw(output="text"))
 
-        # ── Transpile & run ───────────────────────────────────────────────────
         qc_t = transpile(qc, optimization_level=0)
-
         if self.is_ibm:
             qc_t = transpile(qc, backend=self.backend, optimization_level=0)
-            counts = run_on_ibm(qc_t, self.backend, shots=shots)
-        else:
-            job = self.simulator.run(qc_t, shots=shots)
-            counts = job.result().get_counts()
 
-        # ── Target state selection ────────────────────────────────────────────
-        # states 0, 2 -> '0'*N  |  states 1, 3 -> '1'*N
         target_state = ('1' * self.N) if self.initial_state in (1, 3) else ('0' * self.N)
+        return qc_t, target_state
 
+    def calculate_fidelity(self, counts, target_state, shots) -> dict:
         fidelity_count = 0
         for bitstring, count in counts.items():
-            measured = bitstring.replace(" ", "")[-self.N:]
+            measured = bitstring.replace(' ', '')[-self.N:]
             if measured == target_state:
                 fidelity_count += count
-
         f_raw = fidelity_count / shots
 
-        # ── Error mitigation (opt-in) ─────────────────────────────────────────
-        if not (self.zne_enabled or self.rem_enabled):
-            return f_raw
+        if not getattr(self, 'zne_enabled', False) and not getattr(self, 'rem_enabled', False):
+            return {'f_raw': f_raw}
 
-        mitigation_result = {"f_raw": f_raw}
-
-        # REM: readout error mitigation
-        if self.rem_enabled:
+        mitigation_result = {'f_raw': f_raw}
+        if getattr(self, 'rem_enabled', False):
             try:
-                rem = ReadoutMitigator.from_backend_properties(
-                    self.backend, list(range(self.N))
-                )
+                rem = ReadoutMitigator.from_backend_properties(self.backend, list(range(self.N)))
                 corrected = rem.apply(counts)
                 rem_count = sum(
                     c for b, c in corrected.items()
                     if b.replace(' ', '')[-self.N:] == target_state
                 )
-                mitigation_result["f_rem"] = rem_count / max(sum(corrected.values()), 1)
-            except (ValueError, AttributeError) as e:
+                mitigation_result['f_rem'] = rem_count / max(sum(corrected.values()), 1)
+            except Exception as e:
                 print(f"    [REM] Skipped: {e}")
-                mitigation_result["f_rem"] = None
-
-        # ZNE: fold at multiple noise factors and extrapolate
-        if self.zne_enabled:
-            folder = ZNEFolder(seed=self.zne_seed)
-            extrapolator = ZNEExtrapolator()
-            zne_raw_fids = {1: f_raw}
-
-            for factor in self.zne_noise_factors:
-                if factor == 1:
-                    continue
-                folded = folder.fold_circuit(qc_t, factor)
-                if self.is_ibm:
-                    zne_counts = run_on_ibm(folded, self.backend, shots=shots)
-                else:
-                    zne_job = self.simulator.run(folded, shots=shots)
-                    zne_counts = zne_job.result().get_counts()
-                zne_fid_count = sum(
-                    c for b, c in zne_counts.items()
-                    if b.replace(' ', '')[-self.N:] == target_state
-                )
-                zne_raw_fids[factor] = zne_fid_count / shots
-
-            factors_sorted = sorted(zne_raw_fids.keys())
-            values = [zne_raw_fids[f] for f in factors_sorted]
-            zne_result = extrapolator.extrapolate(factors_sorted, values, self.zne_extrapolator_method)
-            mitigation_result["f_zne"] = zne_result.bounded
-            mitigation_result["f_zne_raw"] = zne_result.raw
-            mitigation_result["zne_per_factor"] = zne_raw_fids
-
+                mitigation_result['f_rem'] = None
         return mitigation_result
 
     # -- Delay characterization (curve_fit) -----------------------------------
@@ -264,81 +205,119 @@ class TmaxValidatorDelay:
         shots: int = 4000,
         plot_path: str | None = "results/delay_decay_curve.png",
     ) -> np.ndarray:
-        """
-        Sweep over delay durations, collect fidelity, and fit the
-        exponential decay model F(t) = A*exp(-t/tau) + B via curve_fit.
-
-        Returns:
-            popt  --  array [A_fit, tau_fit, B_fit]
-        """
         print("=" * 65)
-        print("  SQM -- Delay Characterization (Exponential Decay Model)")
+        print("  SQM -- Delay Characterization (Batch Mode)")
         print("=" * 65)
         print(f"\n  Backend      : {self.backend.name}")
         print(f"  N_qubits     : {self.N}")
         print(f"  dt           : {self.dt_sec * 1e9:.4f} ns")
         print(f"\n  Measuring F(t) for t = {[f'{d:.0f}' for d in delay_list_ns[:5]]} ... ns")
         print(f"  shots per point = {shots}\n")
+        
+        variant_count = self.twirling_variants if getattr(self, 'pauli_twirling', False) else 1
+        all_circuits = []
+        metadata = []
+        
+        for delay in delay_list_ns:
+            for variant in range(variant_count):
+                seed = None
+                if getattr(self, 'twirling_seed', None) is not None:
+                    seed = self.twirling_seed + variant * 1_000_003 + int(delay) * 1_009
+                qc_t, target = self.build_empirical_circuit(delay, seed)
+                
+                all_circuits.append(qc_t)
+                metadata.append({'delay': delay, 'variant': variant, 'factor': 1, 'target': target})
+                
+                if getattr(self, 'zne_enabled', False):
+                    folder = ZNEFolder(seed=self.zne_seed)
+                    for factor in self.zne_noise_factors:
+                        if factor == 1: continue
+                        folded = folder.fold_circuit(qc_t, factor)
+                        all_circuits.append(folded)
+                        metadata.append({'delay': delay, 'variant': variant, 'factor': factor, 'target': target})
 
-        # -- Empirical data collection -----------------------------------------
+        print(f"  Generated {len(all_circuits)} circuits for batch execution.")
+        
+        if self.is_ibm:
+            all_counts = run_on_ibm(all_circuits, self.backend, shots=shots)
+        else:
+            sim = AerSimulator(noise_model=self.noise_model)
+            job = sim.run(all_circuits, shots=shots)
+            res = job.result()
+            all_counts = [res.get_counts(i) for i in range(len(all_circuits))]
+
+        results_map = {}
+        for count_dict, meta in zip(all_counts, metadata):
+            d, v, f = meta['delay'], meta['variant'], meta['factor']
+            if (d, v) not in results_map:
+                results_map[(d, v)] = {'raw_counts': None, 'zne_counts': {}, 'meta': meta}
+            if f == 1:
+                results_map[(d, v)]['raw_counts'] = count_dict
+            else:
+                results_map[(d, v)]['zne_counts'][f] = count_dict
+
         t_arr = np.array(delay_list_ns, dtype=float)
-        y_data: list[float] = []
-        y_std: list[float] = []
-        variant_count = self.twirling_variants if self.pauli_twirling else 1
-
-        for t_ns in delay_list_ns:
+        y_data, y_std = [], []
+        
+        for delay in delay_list_ns:
             fidelities = []
             for variant in range(variant_count):
-                seed = None if self.twirling_seed is None else self.twirling_seed + variant * 1_000_003 + int(t_ns) * 1_009
-                f_emp_res = self.empirical_fidelity(t_ns, shots=shots, twirling_seed=seed)
-                if isinstance(f_emp_res, dict):
-                    if f_emp_res.get("f_zne") is not None:
-                        fidelities.append(f_emp_res["f_zne"])
-                    elif f_emp_res.get("f_rem") is not None:
-                        fidelities.append(f_emp_res["f_rem"])
-                    else:
-                        fidelities.append(f_emp_res["f_raw"])
+                rm = results_map[(delay, variant)]
+                meta = rm['meta']
+                res = self.calculate_fidelity(rm['raw_counts'], meta['target'], shots)
+                
+                if getattr(self, 'zne_enabled', False):
+                    extrapolator = ZNEExtrapolator()
+                    zne_fids = {1: res['f_raw']}
+                    for f_zne, c_zne in rm['zne_counts'].items():
+                        r_zne = self.calculate_fidelity(c_zne, meta['target'], shots)
+                        zne_fids[f_zne] = r_zne['f_raw']
+                        
+                    factors_sorted = sorted(zne_fids.keys())
+                    values = [zne_fids[fac] for fac in factors_sorted]
+                    zne_result = extrapolator.extrapolate(factors_sorted, values, self.zne_extrapolator_method)
+                    res['f_zne'] = zne_result.bounded
+                    
+                if 'f_zne' in res and res['f_zne'] is not None:
+                    fidelities.append(res['f_zne'])
+                elif 'f_rem' in res and res['f_rem'] is not None:
+                    fidelities.append(res['f_rem'])
                 else:
-                    fidelities.append(f_emp_res)
+                    fidelities.append(res['f_raw'])
+                    
             f_emp = float(np.mean(fidelities))
             f_std = float(np.std(fidelities, ddof=1)) if variant_count > 1 else 0.0
             y_data.append(f_emp)
             y_std.append(f_std)
-            print(f"    t={t_ns:10.1f} ns  F_emp = {f_emp:.6f}  std = {f_std:.6f} ({variant_count} variants)")
+            print(f"    t={delay:10.1f} ns  F_emp = {f_emp:.6f}  std = {f_std:.6f} ({variant_count} variants)")
 
         y_arr = np.array(y_data, dtype=float)
-
-        # -- curve_fit: F(t) = A * exp(-t/tau) + B ----------------------------
+        
         tau_guess = max(t_arr.max() / 3, 1.0)
         p0     = [0.75, tau_guess, self.B_ideal]
         bounds = ([0.0, 1e-3, 0.0], [1.0, 1e12, 1.0])
+        
+        try:
+            popt, _ = curve_fit(exp_decay_model, t_arr, y_arr, p0=p0, bounds=bounds, maxfev=10_000)
+        except RuntimeError as e:
+            print(f"    [Warning] Curve fit failed: {e}. Using initial parameters.")
+            popt = p0
 
-        popt, _ = curve_fit(
-            exp_decay_model,
-            t_arr,
-            y_arr,
-            p0=p0,
-            bounds=bounds,
-            maxfev=10_000,
-        )
-
-        print(f"\n  Fit completed.")
+        print("\n  Fit completed.")
         print(f"    A_fit   = {popt[0]:.6f}")
         print(f"    tau_fit = {popt[1]:.2f} ns")
         print(f"    B_fit   = {popt[2]:.6f}")
 
-        # -- Plot (optional) ---------------------------------------------------
         if plot_path is not None:
             self._plot_decay_curve(t_arr, y_arr, popt, plot_path)
-
-        # -- Save to CSV -------------------------------------------------------
+            
         csv_path = (
             plot_path.replace(".png", ".csv").replace("results", "data")
             if plot_path
             else "data/delay_characterization.csv"
         )
         self._save_results_to_csv(t_arr, y_arr, popt, csv_path, np.array(y_std))
-
+            
         return popt
 
     # -- Save results to CSV --------------------------------------------------
@@ -374,6 +353,9 @@ class TmaxValidatorDelay:
             writer.writerow(["Twirling Variants", self.twirling_variants if self.pauli_twirling else 1])
             writer.writerow(["Twirling Seed", self.twirling_seed if self.twirling_seed is not None else "random"])
             writer.writerow(["Mitigation ZNE", "enabled" if self.zne_enabled else "disabled"])
+            if getattr(self, "zne_enabled", False):
+                writer.writerow(["ZNE Noise Factors", getattr(self, "zne_noise_factors", "[]")])
+                writer.writerow(["ZNE Extrapolator", getattr(self, "zne_extrapolator_method", "N/A")])
             writer.writerow(["Mitigation REM", "enabled" if self.rem_enabled else "disabled"])
             writer.writerow([])
 
@@ -504,7 +486,17 @@ class TmaxValidatorDelay:
         print("=" * 65)
 
         f_th  = self.theoretical_fidelity(t_test_ns)
-        f_emp = self.empirical_fidelity(t_test_ns)
+        
+        qc_t, target = self.build_empirical_circuit(t_test_ns)
+        if self.is_ibm:
+            from experiments.utils.ibm_backend_helper import run_on_ibm
+            counts = run_on_ibm([qc_t], self.backend, shots=4000)[0]
+        else:
+            sim = AerSimulator(noise_model=self.noise_model)
+            counts = sim.run(qc_t, shots=4000).result().get_counts()
+        res = self.calculate_fidelity(counts, target, 4000)
+        f_emp = res.get('f_zne') or res.get('f_rem') or res.get('f_raw')
+        
         diff  = abs(f_th - f_emp)
         rel   = (diff / f_emp * 100) if f_emp > 0 else float("inf")
         print(f"\n  [t={t_test_ns:.0f} ns]  F_model={f_th:.6f}  F_emp={f_emp:.6f}  "
@@ -580,14 +572,14 @@ if __name__ == "__main__":
     # =========================================================================
     backend_mode = "default"  # Change to "IBM" to run on real IBM hardware
     shots = 1024
-    twirling = True           # Set to True to enable Pauli twirling
+    twirling = False           # Set to True to enable Pauli twirling
     twirling_variants = 10    # Number of random circuits per delay point
-
+ 
     # Mitigation toggles
-    use_zne = True
-    use_rem = False
+    use_zne = False  
+    use_rem = False 
     mitigation_config = {
-        "zne": {"enabled": use_zne, "noise_factors": [1, 3], "extrapolator": "linear"},
+        "zne": {"enabled": use_zne, "noise_factors": [1, 3], "extrapolator": "exponential"},
         "rem": {"enabled": use_rem}
     }
 
@@ -600,7 +592,7 @@ if __name__ == "__main__":
     #   3 = |->  : qubit starts in |-> (X+H gates), H applied before measure,
     #              fidelity measured vs |1>
     # =========================================================================
-    initial_state = 1  # 0 = |0>, 1 = |1>, 2 = |+> (H), 3 = |-> (XH)
+    initial_state = 2  # 0 = |0>, 1 = |1>, 2 = |+> (H), 3 = |-> (XH)
 
     # 1. DEFINE THE ARCHITECTURE (N = Word width)
     N_qubits = 1

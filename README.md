@@ -20,26 +20,42 @@ SQM/
 │   │   └── ibm_hardware_backend.py         # Real IBM Quantum hardware (IBMHardwareBackend)
 │   ├── modular_circuits/                   # Core circuit components
 │   │   ├── __init__.py
-│   │   ├── qpc.py                          # QPC odometer (hybrid desgaste tracker)
 │   │   ├── memory_register.py              # StorageRegister (passive memory)
-│   │   └── operation_register.py           # OperationRegister (active CPU)
+│   │   ├── operation_register.py           # OperationRegister (active CPU)
+│   │   └── sqc.py                          # SQC odometer (hybrid desgaste tracker)
 │   ├── functions/                          # Quantum algorithms & operations
 │   │   ├── __init__.py
 │   │   ├── qubit_mapper.py                 # Hardware-aware qubit allocation (chain topology)
 │   │   ├── teleportation.py                # SystolicTeleportation (3-parallel bus)
 │   │   └── work_phase.py                   # SystolicWorkPhase (NISQ SWAP)
+│   ├── mitigation/                         # Error mitigation techniques
+│   │   ├── __init__.py
+│   │   ├── flow_helper.py                  # Helper functions for mitigation flows
+│   │   ├── mitigation_executor.py          # Executor for error mitigation
+│   │   ├── readout_mitigator.py            # Readout error mitigation
+│   │   ├── zne_extrapolator.py             # Zero-Noise Extrapolation (ZNE)
+│   │   └── zne_folding.py                  # ZNE circuit folding techniques
 │   ├── simulator/                          # Quantum compilers & simulators
 │   │   ├── __init__.py
 	│   │   ├── sqm_simulator_Flow.py           # SQMFlowCompiler (fidelity on operation register)
 │   │   └── swap_simulator_Flow.py          # SwapFlowCompiler (fidelity on operation register)
-│   ├── time_calculation/                   # Thermal relaxation & threshold calculations
-│   │   ├── __init__.py
-│   │   ├── ibm_backend_helper.py           # Shared IBM backend + SamplerV2 utilities
-│   │   └── tmax_calculator.py              # Passive desgaste threshold (analytical)
 │   └── utils/                              # Shared utility modules
 │       ├── __init__.py
+│       ├── hardware_results_processor.py   # CSV/PNG export for hardware experiments
 │       ├── measurement_parser.py           # MeasurementParser (endianness-aware bit extraction)
-│       └── hardware_results_processor.py   # CSV/PNG export for hardware experiments
+│       └── pauli_twirling.py               # Pauli Twirling for error suppression
+├── experiments/                            # Thermal relaxation & threshold calculations (Validators)
+│   ├── __init__.py
+│   ├── cmax_validator_not.py               # CMax NOT validator
+│   ├── cmax_validator_sqm.py               # CMax SQM validator
+│   ├── cmax_validator_swap.py              # CMax SWAP validator
+│   ├── cmax_validator_teleport.py          # CMax Teleport validator
+│   ├── tmax_calculator.py                  # Analytical calculator
+│   ├── tmax_validator_Id.py                # TMax Identity validator
+│   ├── Tmax_validator_delay.py             # TMax delay validator
+│   └── utils/                              # Experiments utils
+│       ├── __init__.py
+│       └── ibm_backend_helper.py           # Shared IBM backend + SamplerV2 utilities
 ├── tests/                                  # Test suite
 │   ├── __init__.py
 │   ├── qpc_test.py                         # BipartiteQPC validation
@@ -421,7 +437,7 @@ Addresses are binary-encoded (e.g., `WRITE_0` = address 0, `READ_10` = address 2
 
 ---
 
-### Time Characterization & Validators (`src/time_calculation/`)
+### Time Characterization & Validators (`experiments/`)
 
 Seven independent validators characterize fidelity decay using the **Magesan model** `F(m) = A·p^m + B` or **exponential decay** `F(t) = A·exp(−t/τ) + B`:
 
@@ -440,7 +456,19 @@ Each validator supports:
 - Full RB characterization with `curve_fit`
 - Decay curve plots (PNG) and data export (CSV) to `results/` and `data/`
 - Extrapolation validation (model vs fresh measurement)
-- `ibm_backend_helper.py` provides shared `get_ibm_backend()` and `run_on_ibm()` for hardware execution
+- `utils/ibm_backend_helper.py` provides shared `get_ibm_backend()` and `run_on_ibm()` for hardware execution
+
+---
+
+### Error Mitigation (`src/mitigation/`)
+
+| Module | Description |
+|--------|-------------|
+| `mitigation_executor.py` | Executor for error mitigation techniques |
+| `readout_mitigator.py` | Readout error mitigation |
+| `zne_extrapolator.py` | Zero-Noise Extrapolation (ZNE) |
+| `zne_folding.py` | ZNE circuit folding techniques |
+| `flow_helper.py` | Helper functions for mitigation flows |
 
 ---
 
@@ -448,9 +476,10 @@ Each validator supports:
 
 | Module | Class/Function | Purpose |
 |--------|----------------|---------|
-| `measurement_parser.py` | `MeasurementParser` | Endianness-aware bitstring extraction for multi-register outcomes |
 | `hardware_results_processor.py` | `save_hardware_comparison_results()` | Single-workload CSV + comparison graph |
 | `hardware_results_processor.py` | `save_hardware_multi_workload_results()` | Multi-workload aggregated CSV + grouped bar chart |
+| `measurement_parser.py` | `MeasurementParser` | Endianness-aware bitstring extraction for multi-register outcomes |
+| `pauli_twirling.py` | Pauli twirling utilities | Pauli twirling for error suppression |
 
 **MeasurementParser features:**
 - `split_registers()` — Split outcome by spaces
@@ -466,7 +495,7 @@ Each validator supports:
 |--------|-------|---------|
 | `memory_register.py` | `StorageRegister` | Passive memory qubits |
 | `operation_register.py` | `OperationRegister` | Active operation workspace |
-| `qpc.py` | `QPC` | Quantum Processor Component — hybrid odometer for gate cost (`c_max`) and time-based (`t_max`) desgaste tracking |
+| `sqc.py` | `SQC` | Quantum Sequential Cache — hybrid odometer for gate cost (`c_max`) and time-based (`t_max`) desgaste tracking |
 
 ---
 
@@ -576,22 +605,22 @@ python tests/Test_IBMHardwareBackend.py
 ### Running RB Characterization Validators
 ```powershell
 # SWAP pair decay characterization
-python src/time_calculation/cmax_validator_swap.py
+python experiments/cmax_validator_swap.py
 
 # SQM (SWAP + teleportation) characterization
-python src/time_calculation/cmax_validator_sqm.py
+python experiments/cmax_validator_sqm.py
 
 # Teleportation-only characterization
-python src/time_calculation/cmax_validator_teleport.py
+python experiments/cmax_validator_teleport.py
 
 # NOT gate pair characterization
-python src/time_calculation/cmax_validator_not.py
+python experiments/cmax_validator_not.py
 
 # Delay-based idle decoherence characterization
-python src/time_calculation/Tmax_validator_delay.py
+python experiments/Tmax_validator_delay.py
 
 # Identity gate idle decoherence characterization
-python src/time_calculation/tmax_validator_Id.py
+python experiments/tmax_validator_Id.py
 ```
 
 Each validator can be switched between `"default"` (FakeKyiv) and `"IBM"` (real hardware) by editing the `backend_mode` variable at the bottom of each file.

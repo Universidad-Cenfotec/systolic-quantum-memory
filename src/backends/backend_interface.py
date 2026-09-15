@@ -72,6 +72,27 @@ class BackendInterface(ABC):
         pass
 
     @abstractmethod
+    def run_batch(self, circuits: list[QuantumCircuit], shots: int, seed: int = 42) -> Any:
+        """
+        Execute a batch of transpiled quantum circuits on the backend.
+
+        Parameters
+        ----------
+        circuits : list[QuantumCircuit]
+            List of transpiled circuits ready for execution
+        shots : int
+            Number of circuit executions per circuit
+        seed : int, optional
+            Random seed for reproducibility (default: 42)
+
+        Returns
+        -------
+        Any
+            Job batch result object
+        """
+        pass
+
+    @abstractmethod
     def get_backend_info(self) -> Dict[str, Any]:
         """
         Retrieve backend configuration information.

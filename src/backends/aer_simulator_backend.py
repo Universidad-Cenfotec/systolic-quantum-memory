@@ -163,6 +163,39 @@ class AerSimulatorBackend(BackendInterface):
 
         return result
 
+    def run_batch(
+        self,
+        circuits: list[QuantumCircuit],
+        shots: int = 1024,
+        seed: int = 42,
+    ) -> Any:
+        """
+        Execute a batch of transpiled quantum circuits on AerSimulator.
+
+        Parameters
+        ----------
+        circuits : list[QuantumCircuit]
+            List of transpiled circuits ready for execution
+        shots : int, optional
+            Number of shots per circuit (default: 1024)
+        seed : int, optional
+            Random seed for reproducibility (default: 42)
+
+        Returns
+        -------
+        Any
+            Result object from AerSimulator job execution, which supports get_counts(i)
+        """
+
+        print(f"[Execution] Sending batch of {len(circuits)} circuits to AerSimulator backend...")
+
+        job = self.simulator.run(circuits, shots=shots, seed=seed)
+        result = job.result()
+
+        print(f"[Execution] Backend batch execution completed")
+
+        return result
+
     def get_backend_info(self) -> Dict[str, Any]:
         """
         Retrieve backend configuration and noise model information.

@@ -41,12 +41,12 @@ def get_ibm_backend(backend_name: str = "ibm_kingston"):
 
 
 def run_on_ibm(
-    qc_transpiled: QuantumCircuit,
+    qc_transpiled: QuantumCircuit | list[QuantumCircuit],
     backend: Any,
     shots: int = 4000,
-) -> Dict[str, int]:
+) -> Dict[str, int] | list[Dict[str, int]]:
     """
-    Execute a transpiled circuit on real IBM hardware via SamplerV2
+    Execute transpiled circuit(s) on real IBM hardware via SamplerV2
     and return counts in dict[str, int] format (same as AerSimulator).
 
     Delegates result parsing to MockResult from src.backends.ibm_hardware_backend
@@ -54,8 +54,8 @@ def run_on_ibm(
 
     Parameters
     ----------
-    qc_transpiled : QuantumCircuit
-        Circuit already transpiled for the target backend.
+    qc_transpiled : QuantumCircuit | list[QuantumCircuit]
+        Circuit or list of circuits already transpiled for the target backend.
     backend : IBMBackend
         Real IBM Quantum backend instance.
     shots : int
@@ -63,17 +63,24 @@ def run_on_ibm(
 
     Returns
     -------
-    Dict[str, int]
-        Measurement counts dictionary.
+    Dict[str, int] | list[Dict[str, int]]
+        Measurement counts dictionary, or list of dictionaries if multiple circuits.
     """
-    print(f"[IBMBackendHelper] Submitting circuit to {backend.name}...")
-    print(f"[IBMBackendHelper] Circuit: {qc_transpiled.num_qubits} qubits, "
-          f"{qc_transpiled.num_clbits} clbits, depth={qc_transpiled.depth()}")
+    is_single = isinstance(qc_transpiled, QuantumCircuit)
+    circuits_to_run = [qc_transpiled] if is_single else qc_transpiled
+
+    num_circuits = len(circuits_to_run)
+    print(f"[IBMBackendHelper] Submitting {num_circuits} circuit(s) to {backend.name}...")
+
+    # If submitting a single circuit, print its details
+    if is_single:
+        print(f"[IBMBackendHelper] Circuit: {qc_transpiled.num_qubits} qubits, "
+              f"{qc_transpiled.num_clbits} clbits, depth={qc_transpiled.depth()}")
 
     sampler = SamplerV2(mode=backend)
     sampler.options.default_shots = shots
 
-    job = sampler.run([qc_transpiled])
+    job = sampler.run(circuits_to_run)
     job_id = job.job_id()
     print(f"[IBMBackendHelper] Job submitted: {job_id}")
     print(f"[IBMBackendHelper] Waiting for results...")
@@ -81,6 +88,11 @@ def run_on_ibm(
     result = job.result()
     print(f"[IBMBackendHelper] Job {job_id} completed successfully")
 
-    # Use the single MockResult implementation from src.backends
-    mock_result = MockResult(result[0])
-    return mock_result.get_counts()
+    counts_list = []
+    for pub_res in result:
+        mock_result = MockResult(pub_res)
+        counts_list.append(mock_result.get_counts())
+
+    if is_single:
+        return counts_list[0]
+    return counts_list

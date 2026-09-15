@@ -198,218 +198,98 @@ class CMaxValidatorTeleport:
 
     # -- Empirical fidelity (noisy multiple teleportations) --------------------
 
-    def empirical_fidelity(
+    def build_empirical_circuit(
         self,
         m_teleports: int,
-        shots: int = 4000,
         twirling_seed: int | None = None,
-    ) -> float:
-        """
-        Build a circuit that performs `m_teleports` successive teleportations
-        and measure the survival probability F = P(|1...1⟩).
-
-        Both reg_A and reg_B are initialised in |1⟩. The data starts in reg_A
-        and ping-pongs with each teleportation cycle:
-            m=0             : no teleport  → data in reg_A → measure reg_A
-            m=1 (A→B)       : 1 teleport   → data in reg_B → measure reg_B
-            m=2 (A→B, B→A) : 2 teleports  → data in reg_A → measure reg_A
-            m odd           : data ends in reg_B
-            m even (m>0)    : data returns to reg_A
-        The ancilla register is never initialised (always |0⟩).
-        """
+    ):
+        """Build and transpile the circuit for m_teleports."""
         if m_teleports < 0:
             raise ValueError(f"m_teleports must be >= 0, received: {m_teleports}")
 
-        # -- Quantum registers --------------------------------------------------
         reg_A   = QuantumRegister(self.N, name="A")
         reg_B   = QuantumRegister(self.N, name="B")
         ancilla = QuantumRegister(self.N, name="anc")
-
-        # Classical register for the final measurement
         cr_final = ClassicalRegister(self.N, name="cr_final")
-
         qc = QuantumCircuit(reg_A, reg_B, ancilla, cr_final)
 
-        # ── State preparation on SOURCE register (reg_A) ─────────────────────
-        # reg_B (destination) always starts in |0⟩ for Bell-pair generation.
-        # The ancilla is also left in |0⟩ (never initialised here).
-        if self.initial_state == 0:
-            pass  # |0⟩ is the default reset state; no gates needed
-        elif self.initial_state == 1:
-            for i in range(self.N):
-                qc.x(reg_A[i])   # |0⟩ -> |1⟩
+        if self.initial_state == 1:
+            for i in range(self.N): qc.x(reg_A[i])
         elif self.initial_state == 2:
-            for i in range(self.N):
-                qc.h(reg_A[i])   # |0⟩ -> |+⟩
+            for i in range(self.N): qc.h(reg_A[i])
         elif self.initial_state == 3:
-            for i in range(self.N):
-                qc.x(reg_A[i])   # |0⟩ -> |1⟩
-                qc.h(reg_A[i])   # |1⟩ -> |-⟩
-        else:
-            raise ValueError(f"initial_state must be 0-3, received: {self.initial_state}")
+            for i in range(self.N): qc.x(reg_A[i]); qc.h(reg_A[i])
 
-        # -- Teleportation module (fresh instance to reset caches) -------------
         teleporter = SystolicTeleportation(
             name="teleport_validator",
             pauli_twirling=self.pauli_twirling,
             twirling_seed=self.twirling_seed if twirling_seed is None else twirling_seed,
         )
 
-        # -- Single cr_bell register reused across ALL teleportation cycles ----
-        # The classical bits are overwritten each cycle after feed-forward
-        # corrections are applied. No need for separate registers per cycle.
         cr_bell = ClassicalRegister(2 * self.N, name="cr_bell")
         qc.add_register(cr_bell)
 
-        # -- Apply m teleportation cycles (ping-pong between A and B) ----------
         for k in range(m_teleports):
-            if k % 2 == 0:
-                src_reg, dst_reg = reg_A, reg_B
-            else:
-                src_reg, dst_reg = reg_B, reg_A
-
-            qc = teleporter.build_circuit(
-                qc,
-                source_reg=src_reg,
-                dest_reg=dst_reg,
-                ancilla_reg=ancilla,
-                cr_bell=cr_bell,
-            )
+            src_reg, dst_reg = (reg_A, reg_B) if k % 2 == 0 else (reg_B, reg_A)
+            qc = teleporter.build_circuit(qc, source_reg=src_reg, dest_reg=dst_reg, ancilla_reg=ancilla, cr_bell=cr_bell)
             qc.barrier()
 
-        # -- Determine which register holds the final state --------------------
-        # Data starts in reg_A and alternates with each teleportation cycle.
-        # Ping-pong tracker: A→B (k=1), B→A (k=2), A→B (k=3), ...
-        if m_teleports == 0:
-            final_reg = reg_A                  # no teleport: still in A
-        elif m_teleports % 2 == 1:
-            final_reg = reg_B                  # odd  teleports: data ends in B
-        else:
-            final_reg = reg_A                  # even teleports: data back in A
+        if m_teleports == 0: final_reg = reg_A
+        elif m_teleports % 2 == 1: final_reg = reg_B
+        else: final_reg = reg_A
 
-        print(f"    [circuit] m={m_teleports} -> measuring {'reg_B' if final_reg is reg_B else 'reg_A'}")
-
-        # ── Basis rotation before measurement (superposition states) ───────────
-        # For |+⟩ and |-⟩: apply H to rotate back to computational basis
         if self.initial_state in (2, 3):
-            for i in range(self.N):
-                qc.h(final_reg[i])
+            for i in range(self.N): qc.h(final_reg[i])
 
-        # -- Final measurement on the register holding the state ---------------
         for i in range(self.N):
             qc.measure(final_reg[i], cr_final[i])
 
-        # -- Hardware-aware qubit mapping --------------------------------------
         chains = self._get_physical_chains()
-
-        initial_layout: list[int] = [0] * (3 * self.N)
+        initial_layout = [0] * (3 * self.N)
         for i, (phys_a, phys_b, phys_anc) in enumerate(chains):
-            initial_layout[i]                = phys_a     # reg_A
-            initial_layout[self.N + i]       = phys_b     # reg_B
-            initial_layout[2 * self.N + i]   = phys_anc   # ancilla
+            initial_layout[i]              = phys_a
+            initial_layout[self.N + i]     = phys_b
+            initial_layout[2 * self.N + i] = phys_anc
         
-        #print(qc.draw(output="text"))  # Disabled: Unicode issues on Windows cp1252
-        # -- Transpile and simulate --------------------------------------------
-        qc_t = transpile(
-            qc, backend=self.backend,
-            optimization_level=0,
-            initial_layout=initial_layout,
-        )
+        qc_t = transpile(qc, backend=self.backend, optimization_level=0, initial_layout=initial_layout)
 
-        if self.is_ibm:
-            # Run on real IBM hardware via SamplerV2
-            counts = run_on_ibm(qc_t, self.backend, shots=shots)
-        else:
-            # Run on local AerSimulator with noise model
-            sim  = AerSimulator(noise_model=self.noise_model)
-            job    = sim.run(qc_t, shots=shots)
-            counts = job.result().get_counts()
-
-        # -- Fidelity extraction -----------------------------------------------
-        # cr_bell is ALWAYS added to the circuit (line 203-204), even for m=0.
-        # The bitstring from Qiskit always contains both registers (little-endian:
-        # cr_bell appears first/leftmost). The layout must always include both
-        # so that extract_register_bits correctly targets cr_final bits.
         register_layout = MeasurementParser.build_register_layout_from_order(
             register_names=["cr_final", "cr_bell"],
             register_sizes=[self.N, 2 * self.N],
             reverse_for_endianness=True,
         )
-
-        # ── Target state selection ─────────────────────────────────────────────
-        # states 0, 2 -> '0'*N  |  states 1, 3 -> '1'*N
         target_state = ('1' * self.N) if self.initial_state in (1, 3) else ('0' * self.N)
-        fidelity_count = 0
+        return qc_t, register_layout, target_state, final_reg, initial_layout
 
+    def calculate_fidelity(self, counts, register_layout, target_state, final_reg, initial_layout, shots) -> dict:
+        fidelity_count = 0
         for bitstring, count in counts.items():
-            final_bits = MeasurementParser.extract_register_bits(
-                bitstring, "cr_final", register_layout
-            )
+            final_bits = MeasurementParser.extract_register_bits(bitstring, "cr_final", register_layout)
             if final_bits == target_state:
                 fidelity_count += count
-
         f_raw = fidelity_count / shots
 
-        # ── Error mitigation (opt-in) ─────────────────────────────────────────
         if not (self.zne_enabled or self.rem_enabled):
-            return f_raw
+            return {"f_raw": f_raw}
 
         mitigation_result = {"f_raw": f_raw}
-
-        # REM: readout error mitigation on final measurement register
         if self.rem_enabled:
             try:
-                # Physical qubits of the final register
-                if final_reg is reg_B:
+                if final_reg.name == "B":
                     final_physical = [initial_layout[self.N + i] for i in range(self.N)]
                 else:
                     final_physical = [initial_layout[i] for i in range(self.N)]
-                rem = ReadoutMitigator.from_backend_properties(
-                    self.backend, final_physical
-                )
+                rem = ReadoutMitigator.from_backend_properties(self.backend, final_physical)
                 corrected = rem.apply(counts)
                 rem_count = 0
                 for b, c in corrected.items():
                     fb = MeasurementParser.extract_register_bits(b, "cr_final", register_layout)
-                    if fb == target_state:
-                        rem_count += c
+                    if fb == target_state: rem_count += c
                 mitigation_result["f_rem"] = rem_count / max(sum(corrected.values()), 1)
-            except (ValueError, AttributeError) as e:
+            except Exception as e:
                 print(f"    [REM] Skipped: {e}")
                 mitigation_result["f_rem"] = None
-
-        # ZNE: fold transpiled circuit at multiple noise factors
-        if self.zne_enabled:
-            folder = ZNEFolder(seed=self.zne_seed)
-            extrapolator = ZNEExtrapolator()
-            zne_raw_fids = {1: f_raw}
-
-            for factor in self.zne_noise_factors:
-                if factor == 1:
-                    continue
-                folded = folder.fold_circuit(qc_t, factor)
-                if self.is_ibm:
-                    zne_counts = run_on_ibm(folded, self.backend, shots=shots)
-                else:
-                    zne_job = AerSimulator(noise_model=self.noise_model).run(folded, shots=shots)
-                    zne_counts = zne_job.result().get_counts()
-                zne_fid_count = 0
-                for b, c in zne_counts.items():
-                    fb = MeasurementParser.extract_register_bits(b, "cr_final", register_layout)
-                    if fb == target_state:
-                        zne_fid_count += c
-                zne_raw_fids[factor] = zne_fid_count / shots
-
-            factors_sorted = sorted(zne_raw_fids.keys())
-            values = [zne_raw_fids[f] for f in factors_sorted]
-            zne_result = extrapolator.extrapolate(factors_sorted, values, self.zne_extrapolator_method)
-            mitigation_result["f_zne"] = zne_result.bounded
-            mitigation_result["f_zne_raw"] = zne_result.raw
-            mitigation_result["zne_per_factor"] = zne_raw_fids
-
         return mitigation_result
-
-    # -- RB Characterization (Magesan) -----------------------------------------
 
     def run_rb_characterization(
         self,
@@ -417,47 +297,86 @@ class CMaxValidatorTeleport:
         shots: int = 4000,
         plot_path: str | None = "results/rb_decay_curve_teleport.png",
     ) -> np.ndarray:
-        """
-        Run full Randomized-Benchmarking characterization.
-
-        For each m in m_list, execute m teleportation cycles and measure
-        the empirical fidelity. Then fit the Magesan model F(m) = A·p^m + B.
-        """
         print("=" * 70)
-        print("  TELEPORT -- Phase B: RB Characterization (Multiple Teleportations)")
+        print("  TELEPORT -- Phase B: RB Characterization (Batch Mode)")
         print("=" * 70)
-        print(f"\n  Backend        : {self.backend.name}")
-        print(f"  Architecture   : 3 registers × {self.N} qubits = {3*self.N} total qubits")
-        print(f"                   (reg_A, reg_B, ancilla)")
-        print(f"  Hilbert dim    : d = 2^{self.N} = {self.d}")
-        print(f"  Native gate    : {self.native_2q_gate.upper()}")
-        print(f"  p_teleport_theory: {self.p_teleport_teorico:.6f}  "
-              f"({self.p_teleport_teorico * 100:.4f} %)")
-        print(f"\n  Measuring F_emp(m) for m = {m_list} (teleportation cycles)...")
-        print(f"  shots per point = {shots}\n")
-
-        # -- Empirical data collection -----------------------------------------
-        m_arr = np.array(m_list, dtype=float)
-        y_data: list[float] = []
-        y_std: list[float] = []
+        print(f"  Backend        : {self.backend.name}")
+        print(f"  p_teleport_theory: {self.p_teleport_teorico:.6f}")
+        
         variant_count = self.twirling_variants if self.pauli_twirling else 1
-
+        all_circuits = []
+        metadata = []
+        
+        # 1. Generate all circuits
         for m in m_list:
-            fidelities = []
             for variant in range(variant_count):
                 seed = None
                 if self.twirling_seed is not None:
                     seed = self.twirling_seed + variant * 1_000_003 + m * 1_009
-                f_emp_res = self.empirical_fidelity(m, shots=shots, twirling_seed=seed)
-                if isinstance(f_emp_res, dict):
-                    if f_emp_res.get("f_zne") is not None:
-                        fidelities.append(f_emp_res["f_zne"])
-                    elif f_emp_res.get("f_rem") is not None:
-                        fidelities.append(f_emp_res["f_rem"])
-                    else:
-                        fidelities.append(f_emp_res["f_raw"])
+                qc_t, layout, target, final_reg, initial_layout = self.build_empirical_circuit(m, seed)
+                
+                all_circuits.append(qc_t)
+                metadata.append({"m": m, "variant": variant, "factor": 1, "layout": layout, "target": target, "freg": final_reg, "ilayout": initial_layout})
+                
+                if self.zne_enabled:
+                    folder = ZNEFolder(seed=self.zne_seed)
+                    for factor in self.zne_noise_factors:
+                        if factor == 1: continue
+                        folded = folder.fold_circuit(qc_t, factor)
+                        all_circuits.append(folded)
+                        metadata.append({"m": m, "variant": variant, "factor": factor, "layout": layout, "target": target, "freg": final_reg, "ilayout": initial_layout})
+
+        print(f"  Generated {len(all_circuits)} circuits for batch execution.")
+        
+        # 2. Execute all circuits
+        if self.is_ibm:
+            all_counts = run_on_ibm(all_circuits, self.backend, shots=shots)
+        else:
+            sim = AerSimulator(noise_model=self.noise_model)
+            job = sim.run(all_circuits, shots=shots)
+            res = job.result()
+            all_counts = [res.get_counts(i) for i in range(len(all_circuits))]
+
+        # 3. Process results
+        results_map = {}
+        for count_dict, meta in zip(all_counts, metadata):
+            m, v, f = meta["m"], meta["variant"], meta["factor"]
+            if (m, v) not in results_map:
+                results_map[(m, v)] = {"raw_counts": None, "zne_counts": {}, "meta": meta}
+            if f == 1:
+                results_map[(m, v)]["raw_counts"] = count_dict
+            else:
+                results_map[(m, v)]["zne_counts"][f] = count_dict
+
+        m_arr = np.array(m_list, dtype=float)
+        y_data, y_std = [], []
+        
+        for m in m_list:
+            fidelities = []
+            for variant in range(variant_count):
+                rm = results_map[(m, variant)]
+                meta = rm["meta"]
+                res = self.calculate_fidelity(rm["raw_counts"], meta["layout"], meta["target"], meta["freg"], meta["ilayout"], shots)
+                
+                if self.zne_enabled:
+                    extrapolator = ZNEExtrapolator()
+                    zne_fids = {1: res["f_raw"]}
+                    for f_zne, c_zne in rm["zne_counts"].items():
+                        r_zne = self.calculate_fidelity(c_zne, meta["layout"], meta["target"], meta["freg"], meta["ilayout"], shots)
+                        zne_fids[f_zne] = r_zne["f_raw"]
+                        
+                    factors_sorted = sorted(zne_fids.keys())
+                    values = [zne_fids[fac] for fac in factors_sorted]
+                    zne_result = extrapolator.extrapolate(factors_sorted, values, self.zne_extrapolator_method)
+                    res["f_zne"] = zne_result.bounded
+                    
+                if "f_zne" in res and res["f_zne"] is not None:
+                    fidelities.append(res["f_zne"])
+                elif "f_rem" in res and res["f_rem"] is not None:
+                    fidelities.append(res["f_rem"])
                 else:
-                    fidelities.append(f_emp_res)
+                    fidelities.append(res["f_raw"])
+                    
             f_emp = float(np.mean(fidelities))
             f_std = float(np.std(fidelities, ddof=1)) if variant_count > 1 else 0.0
             y_data.append(f_emp)
@@ -465,40 +384,21 @@ class CMaxValidatorTeleport:
             print(f"    m={m:3d}  F_emp = {f_emp:.6f}  std = {f_std:.6f} ({variant_count} variants)")
 
         y_arr = np.array(y_data, dtype=float)
-
-        # -- curve_fit adjustment ----------------------------------------------
-        p0     = [0.75, 0.90, self.B_ideal]
+        p0 = [0.75, 0.90, self.B_ideal]
         bounds = ([0.0, 0.0, 0.0], [1.0, 1.0, 1.0])
-
-        popt, _ = curve_fit(
-            rb_decay_model,
-            m_arr,
-            y_arr,
-            p0=p0,
-            bounds=bounds,
-            maxfev=10_000,
-        )
-
-        print(f"\n  Fit completed.")
+        popt, _ = curve_fit(rb_decay_model, m_arr, y_arr, p0=p0, bounds=bounds, maxfev=10_000)
+        
+        print("\n  Fit completed.")
         print(f"    A_fit = {popt[0]:.6f}")
         print(f"    p_fit = {popt[1]:.6f}")
         print(f"    B_fit = {popt[2]:.6f}")
 
-        # -- Plot (optional) ---------------------------------------------------
         if plot_path is not None:
             self._plot_rb_curve(m_arr, y_arr, popt, plot_path)
-
-        # -- Save results to CSV -----------------------------------------------
-        csv_path = (
-            plot_path.replace('.png', '.csv').replace('results', 'data')
-            if plot_path
-            else "data/rb_characterization_teleport.csv"
-        )
-        self._save_rb_results_to_csv(m_arr, y_arr, popt, csv_path, np.array(y_std))
-
+            csv_path = plot_path.replace('.png', '.csv').replace('results', 'data')
+            self._save_rb_results_to_csv(m_arr, y_arr, popt, csv_path, np.array(y_std))
+            
         return popt
-
-    # -- Save RB results to CSV -----------------------------------------------
 
     def _save_rb_results_to_csv(
         self,
@@ -757,8 +657,8 @@ if __name__ == "__main__":
     # =========================================================================
     backend_mode = "default"  # Change to "IBM" to run on real IBM hardware
     twirling = False           # Set to True to enable Pauli twirling
-    twirling_variants = 10    # Number of random circuits per teleport point
-    shots = 1024              # Number of shots per circuit 
+    twirling_variants = 5    # Number of random circuits per teleport point
+    shots = 1024             # Number of shots per circuit 
     # =========================================================================
     # INITIAL STATE
     #   0 = |0⟩  : qubit starts in |0⟩, fidelity measured vs |0⟩
@@ -768,15 +668,15 @@ if __name__ == "__main__":
     #   3 = |-⟩  : qubit starts in |-⟩ (X+H gates), H applied before measure,
     #              fidelity measured vs |1⟩
     # =========================================================================
-    initial_state = 1  # 0 = |0⟩, 1 = |1⟩, 2 = |+⟩ (H), 3 = |-⟩ (XH)
+    initial_state = 2  # 0 = |0⟩, 1 = |1⟩, 2 = |+⟩ (H), 3 = |-⟩ (XH)
     m_list = [0, 1, 2, 4, 6, 8, 10, 15, 20, 25, 30, 40, 50, 60, 80, 100]
     #m_list = [0, 1, 2]
     # 1. DEFINE THE ARCHITECTURE (N = Word width)
     N_qubits = 1 
 
-    # Mitigation toggles
-    use_zne = True
-    use_rem = False
+    # Mitigation toggles 
+    use_zne = False
+    use_rem = False  
     mitigation_config = {
         "zne": {"enabled": use_zne, "noise_factors": [1, 3], "extrapolator": "exponential"},
         "rem": {"enabled": use_rem}

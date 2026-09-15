@@ -173,6 +173,12 @@ def run_simulator_mode(config: Dict[str, Any]):
     if len(workloads) > 2:
         print(f"    - ... and {len(workloads) - 2} more")
     
+    scenarios = parse_scenarios(cfg['execution'].get('scenarios'))
+    if scenarios:
+        print(f"  Scenarios: {scenarios}")
+    else:
+        print(f"  Scenarios: ALL (1, 3)")
+    
     # Run experiment
     print("\n[Phase 4: Comparative Analysis]")
     print("=" * 80)
@@ -189,7 +195,8 @@ def run_simulator_mode(config: Dict[str, Any]):
         pauli_twirling=cfg['execution'].get('pauli_twirling', False),
         twirling_variants=cfg['execution'].get('twirling_variants', 1),
         twirling_seed=cfg['execution'].get('twirling_seed'),
-        mitigation_config=config.get('mitigation', {})
+        mitigation_config=config.get('mitigation', {}),
+
     )
     
     print("\n[OK] Simulator mode completed successfully")
@@ -326,7 +333,8 @@ def run_hardware_mode(config: Dict[str, Any]):
                     'initial_state': cfg['execution']['initial_state'],
                     'pauli_twirling': cfg['execution'].get('pauli_twirling', False),
                     'twirling_variants': cfg['execution'].get('twirling_variants', 1),
-                    'twirling_seed': cfg['execution'].get('twirling_seed')
+                    'twirling_seed': cfg['execution'].get('twirling_seed'),
+                    'mitigation_config': config.get('mitigation', {})
                 }
             )
             

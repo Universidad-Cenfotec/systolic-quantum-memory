@@ -30,27 +30,27 @@ from src.functions.qubit_mapper import QubitMapper
 from src.utils.hardware_results_processor import save_hardware_comparison_results
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ==============================================================================
 # Compiler Execution Functions
-# ══════════════════════════════════════════════════════════════════════════════
+# ==============================================================================
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ==============================================================================
 # Compiler Execution Functions (Flow-based - Fidelity on Operation Register)
-# ══════════════════════════════════════════════════════════════════════════════
+# ==============================================================================
 
 def _run_sqm_flow_once(R: int, n: int, c_max: int, t_max_ns: float,
                      workload: List[str], shots: int, backend_manager: BackendInterface,
                      initial_state: int = 0, pauli_twirling: bool = False,
-                     twirling_seed: int | None = None, mitigation_config: Dict[str, Any] = None) -> Optional[Dict[str, Any]]:
+                     twirling_seed: int | None = None, mitigation_config: Dict[str, Any] | None = None) -> Optional[Dict[str, Any]]:
 
-    # ──────────────────────────────────────────────────────────
+    # ----------------------------------------------------------
     # SEED INITIALIZATION - For global reproducibility
-    # ──────────────────────────────────────────────────────────
+    # ----------------------------------------------------------
     random.seed(42)
     np.random.seed(42)
     
     print("\n" + "=" * 70)
-    state_label = "|1⟩" if initial_state == 1 else "|0⟩"
+    state_label = "|1>" if initial_state == 1 else "|0>"
     print(f"SQM Flow Compiler - Dual-Register Memory with Quantum Teleportation")
     print(f"Target state: {state_label}")
     print(f"Fidelity measured on: OPERATION REGISTER (q_work)")
@@ -91,7 +91,7 @@ def _run_sqm_flow_once(R: int, n: int, c_max: int, t_max_ns: float,
         print(f"  Total Shots: {results['total_shots']}")
         print(f"  Top 5 outcomes:")
         for state_str, count in list(results['counts'].items())[:5]:
-            print(f"    |{state_str}⟩: {count} shots")
+            print(f"    |{state_str}>: {count} shots")
 
         results['qubit_mapper'] = sqm.qubit_mapper
         return results
@@ -109,7 +109,7 @@ def run_sqm_flow_compiler(R: int, n: int, c_max: int, t_max_ns: float,
                           initial_state: int = 0,
                           pauli_twirling: bool = False,
                           twirling_variants: int = 1,
-                          twirling_seed: int | None = None, mitigation_config: Dict[str, Any] = None) -> Optional[Dict[str, Any]]:
+                          twirling_seed: int | None = None, mitigation_config: Dict[str, Any] | None = None) -> Optional[Dict[str, Any]]:
     """Run SQM once or average several randomized compiling variants."""
     if twirling_variants < 1:
         raise ValueError("twirling_variants must be >= 1")
@@ -149,16 +149,16 @@ def run_sqm_flow_compiler(R: int, n: int, c_max: int, t_max_ns: float,
 
 def run_swap_flow_compiler(R: int, n: int, c_max: int, t_max_ns: float,
                      workload: List[str], shots: int, backend_manager: BackendInterface,
-                     initial_state: int = 0, mitigation_config: Dict[str, Any] = None) -> Optional[Dict[str, Any]]:
+                     initial_state: int = 0, mitigation_config: Dict[str, Any] | None = None) -> Optional[Dict[str, Any]]:
 
-    # ──────────────────────────────────────────────────────────
+    # ----------------------------------------------------------
     # SEED INITIALIZATION - For global reproducibility
-    # ──────────────────────────────────────────────────────────
+    # ----------------------------------------------------------
     random.seed(42)
     np.random.seed(42)
     
     print("\n" + "=" * 70)
-    state_label = "|1⟩" if initial_state == 1 else "|0⟩"
+    state_label = "|1>" if initial_state == 1 else "|0>"
     print(f"SWAP Flow Compiler - Single-Register Memory (Baseline)")
     print(f"Target state: {state_label}")
     print(f"Fidelity measured on: OPERATION REGISTER (q_work)")
@@ -198,7 +198,7 @@ def run_swap_flow_compiler(R: int, n: int, c_max: int, t_max_ns: float,
         print(f"  Total Shots: {results['total_shots']}")
         print(f"  Top 5 outcomes:")
         for state_str, count in list(results['counts'].items())[:5]:
-            print(f"    |{state_str}⟩: {count} shots")
+            print(f"    |{state_str}>: {count} shots")
 
         results['qubit_mapper'] = swap.qubit_mapper
         return results
@@ -210,22 +210,22 @@ def run_swap_flow_compiler(R: int, n: int, c_max: int, t_max_ns: float,
         return None
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ==============================================================================
 # Comparative Analysis Function
-# ══════════════════════════════════════════════════════════════════════════════
+# ==============================================================================
 
 def analyze_workload(R: int, n: int, c_max: int, t_max_ns: float,
                     workload_name: str, workload: List[str], shots: int, backend_manager: BackendInterface,
                     initial_state: int = 0, pauli_twirling: bool = False,
-                    twirling_variants: int = 1, twirling_seed: int | None = None, mitigation_config: Dict[str, Any] = None) -> Optional[Dict[str, Any]]:
+                    twirling_variants: int = 1, twirling_seed: int | None = None, mitigation_config: Dict[str, Any] | None = None) -> Optional[Dict[str, Any]]:
     """Measures fidelity on operation register (Flow mode)."""
 
-    print("\n" + "█" * 70)
-    print("█" + " " * 68 + "█")
-    state_label = "|1⟩" if initial_state == 1 else "|0⟩"
-    print("█" + f"  {workload_name} — Target: {state_label} — FLOW (op_register)".center(68) + "█")
-    print("█" + " " * 68 + "█")
-    print("█" * 70)
+    print("\n" + "#" * 70)
+    print("#" + " " * 68 + "#")
+    state_label = "|1>" if initial_state == 1 else "|0>"
+    print("#" + f"  {workload_name} — Target: {state_label} — FLOW (op_register)".center(68) + "#")
+    print("#" + " " * 68 + "#")
+    print("#" * 70)
 
 
 
@@ -259,10 +259,10 @@ def analyze_workload(R: int, n: int, c_max: int, t_max_ns: float,
         print(f"\n[Fidelity Comparison - FLOW]")
         print(f"  SQM:  {sqm_fidelity:.4f} ({sqm_fidelity*100:.2f}%)")
         print(f"  SWAP:  {swap_fidelity:.4f} ({swap_fidelity*100:.2f}%)")
-        print(f"  Δ:     {difference:+.4f} ({percent_diff:+.2f}%)")
+        print(f"  Diff:     {difference:+.4f} ({percent_diff:+.2f}%)")
 
-        behavior = "✓ BETTER" if difference > 0 else "✗ WORSE" if difference < 0 else "= EQUAL"
-        print(f"  → SQM is {behavior} than SWAP")
+        behavior = "[+] BETTER" if difference > 0 else "[-] WORSE" if difference < 0 else "= EQUAL"
+        print(f"  -> SQM is {behavior} than SWAP")
 
         print(f"\n[Architecture Comparison]")
         print(f"  SQM Memory:  Dual-register (Original + Backup)")
@@ -288,15 +288,15 @@ def analyze_workload(R: int, n: int, c_max: int, t_max_ns: float,
         return None
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ==============================================================================
 # Full Comparison coordinator
-# ══════════════════════════════════════════════════════════════════════════════
+# ==============================================================================
 
 def run_full_comparison(R: int, n: int, c_max: int, t_max_ns: float,
                        shots: int, workloads: List[Tuple[str, List[str]]], backend_manager: BackendInterface,
                        initial_state: int = 0,
                        pauli_twirling: bool = False, twirling_variants: int = 1,
-                       twirling_seed: int | None = None, mitigation_config: Dict[str, Any] = None) -> None:
+                       twirling_seed: int | None = None, mitigation_config: Dict[str, Any] | None = None,) -> None:
     
     # Summary tracking
     results = []
@@ -327,13 +327,13 @@ def run_full_comparison(R: int, n: int, c_max: int, t_max_ns: float,
                         qubit_mapping_visualized = True
 
     # Print overall summary
-    print("\n\n" + "╔" + "═" * 68 + "╗")
-    print("║" + "  OVERALL COMPARATIVE SUMMARY".center(68) + "║")
-    print("╚" + "═" * 68 + "╝")
+    print("\n\n" + "+" + "=" * 68 + "+")
+    print("|" + "  OVERALL COMPARATIVE SUMMARY".center(68) + "|")
+    print("+" + "=" * 68 + "+")
 
     if results:
         print(f"\n[Analysis Summary - {len(results)} Workloads]")
-        print("\n" + "┌" + "─" * 68 + "┐")
+        print("\n" + "+" + "-" * 68 + "+")
         
         sqm_better_count = 0
         swap_better_count = 0
@@ -346,17 +346,17 @@ def run_full_comparison(R: int, n: int, c_max: int, t_max_ns: float,
 
             if diff > 0:
                 sqm_better_count += 1
-                status = "✓ SQM BETTER"
+                status = "[+] SQM BETTER"
             elif diff < 0:
                 swap_better_count += 1
-                status = "✗ SWAP BETTER"
+                status = "[-] SWAP BETTER"
             else:
                 equal_count += 1
                 status = "= EQUAL"
 
-            print(f"│ {workload:40} → {status:20} │")
+            print(f"| {workload:40} -> {status:20} |")
 
-        print("└" + "─" * 68 + "┘")
+        print("+" + "-" * 68 + "+")
 
         print(f"\n[Results]")
         print(f"  SQM Better Cases:  {sqm_better_count}/{len(results)}")
@@ -371,11 +371,11 @@ def run_full_comparison(R: int, n: int, c_max: int, t_max_ns: float,
         print(f"\n[Average Fidelity Across All Workloads]")
         print(f"  SQM:  {avg_sqm_fidelity:.4f} ({avg_sqm_fidelity*100:.2f}%)")
         print(f"  SWAP:  {avg_swap_fidelity:.4f} ({avg_swap_fidelity*100:.2f}%)")
-        print(f"  Δ:     {avg_difference:+.4f}")
+        print(f"  Diff:     {avg_difference:+.4f}")
 
-        # ═════════════════════════════════════════════════════════════════════════
+        # =========================================================================
         # GENERATE GRAPH AND SAVE CSV
-        # ═════════════════════════════════════════════════════════════════════════
+        # =========================================================================
         
         print("\n" + "=" * 70)
         print("GENERATING GRAPH AND SAVING RESULTS")
@@ -434,21 +434,6 @@ def run_full_comparison(R: int, n: int, c_max: int, t_max_ns: float,
                        ha='center', va='bottom', fontsize=9)
         
         plt.tight_layout()
-        
-        # Save graph
-        results_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'results')
-        os.makedirs(results_dir, exist_ok=True)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        graph_path = os.path.join(results_dir, f'comparison_graph_{timestamp}.png')
-        plt.savefig(graph_path, dpi=300, bbox_inches='tight')
-        print(f"✓ Graph saved: {graph_path}")
-        plt.close()
-        
-        # Save CSV
-        data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data')
-        os.makedirs(data_dir, exist_ok=True)
-        csv_path = os.path.join(data_dir, f'comparison_results_{timestamp}.csv')
-        
         # Extract backend information
         backend_info = {
             'type': 'Unknown',
@@ -457,6 +442,7 @@ def run_full_comparison(R: int, n: int, c_max: int, t_max_ns: float,
             'idle_time_ns': 'N/A'
         }
         
+        prefix = "sm"
         if backend_manager is not None:
             # Try to get backend info from the backend manager
             if hasattr(backend_manager, 't1_ns'):
@@ -472,8 +458,38 @@ def run_full_comparison(R: int, n: int, c_max: int, t_max_ns: float,
                 backend_info['type'] = 'AerSimulator'
             elif 'Hardware' in backend_class_name or 'IBM' in backend_class_name:
                 backend_info['type'] = 'IBMHardware'
+                prefix = "rb"
             else:
                 backend_info['type'] = backend_class_name
+
+        # Mitigation flags for suffix
+        _mc = mitigation_config or {}
+        use_zne = _mc.get('zne', {}).get('enabled', False)
+        use_rem = _mc.get('rem', {}).get('enabled', False)
+        
+        suffix = ""
+        if use_zne: suffix += "Z"
+        if use_rem: suffix += "R"
+        if pauli_twirling: suffix += "T"
+        if suffix: suffix = "_" + suffix
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        base_name = f"{prefix}_comparison_graph_state{initial_state}{suffix}_{timestamp}"
+        csv_base_name = f"{prefix}_comparison_results_state{initial_state}{suffix}_{timestamp}"
+        summary_base_name = f"{prefix}_comparison_summary_state{initial_state}{suffix}_{timestamp}"
+
+        # Save graph
+        results_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'results')
+        os.makedirs(results_dir, exist_ok=True)
+        graph_path = os.path.join(results_dir, f'{base_name}.png')
+        plt.savefig(graph_path, dpi=300, bbox_inches='tight')
+        print(f"[+] Graph saved: {graph_path}")
+        plt.close()
+        
+        # Save CSV
+        data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data')
+        os.makedirs(data_dir, exist_ok=True)
+        csv_path = os.path.join(data_dir, f'{csv_base_name}.csv')
         
         with open(csv_path, 'w', newline='') as csvfile:
             writer = csv.writer(csvfile)
@@ -537,10 +553,10 @@ def run_full_comparison(R: int, n: int, c_max: int, t_max_ns: float,
                     _rem
                 ])
         
-        print(f"✓ CSV saved: {csv_path}")
+        print(f"[+] CSV saved: {csv_path}")
         
         # Add summary row to CSV (with experiment parameters and backend info)
-        summary_path = os.path.join(data_dir, f'comparison_summary_{timestamp}.csv')
+        summary_path = os.path.join(data_dir, f'{summary_base_name}.csv')
         with open(summary_path, 'w', newline='') as csvfile:
             writer = csv.writer(csvfile)
             
@@ -585,10 +601,10 @@ def run_full_comparison(R: int, n: int, c_max: int, t_max_ns: float,
             writer.writerow(['Avg SWAP Fidelity', f'{avg_swap_fidelity:.4f}'])
             writer.writerow(['Avg Difference', f'{avg_difference:+.4f}'])
         
-        print(f"✓ Summary CSV saved: {summary_path}")
+        print(f"[+] Summary CSV saved: {summary_path}")
 
         print("\n" + "=" * 70)
-        print("✓ COMPARATIVE ANALYSIS COMPLETE")
+        print("[+] COMPARATIVE ANALYSIS COMPLETE")
         print("=" * 70 + "\n")
 
     else:
@@ -596,9 +612,9 @@ def run_full_comparison(R: int, n: int, c_max: int, t_max_ns: float,
 
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ==============================================================================
 # REAL HARDWARE COMPARISON (Multi-Scenario Experiment)
-# ══════════════════════════════════════════════════════════════════════════════
+# ==============================================================================
 
 def run_real_comparison(R: int, n: int, c_max: int, t_max_ns: float,
                        shots: int, workload: List[str],
@@ -607,7 +623,7 @@ def run_real_comparison(R: int, n: int, c_max: int, t_max_ns: float,
                        scenarios: List[int] | None = None,
                        pauli_twirling: bool = False,
                        twirling_variants: int = 1,
-                       twirling_seed: int | None = None, mitigation_config: Dict[str, Any] = None) -> Optional[Dict[str, Any]]:
+                       twirling_seed: int | None = None, mitigation_config: Dict[str, Any] | None = None) -> Optional[Dict[str, Any]]:
     """
     Execute multi-scenario experiment on real IBM Quantum hardware.
 
@@ -645,7 +661,8 @@ def run_real_comparison(R: int, n: int, c_max: int, t_max_ns: float,
         'workload': workload,
         'params': {'R': R, 'n': n, 'c_max': c_max, 't_max_ns': t_max_ns, 'shots': shots,
                'initial_state': initial_state, 'pauli_twirling': pauli_twirling,
-               'twirling_variants': twirling_variants, 'twirling_seed': twirling_seed},
+               'twirling_variants': twirling_variants, 'twirling_seed': twirling_seed,
+               'mitigation_config': mitigation_config},
         'scenarios': {}
     }
 
@@ -939,7 +956,7 @@ def run_real_comparison(R: int, n: int, c_max: int, t_max_ns: float,
     if 'comparative_analysis' in results and len(fidelities) > 0:
         try:
             save_hardware_comparison_results(results)
-            print("\n✓ Results saved successfully")
+            print("\n[+] Results saved successfully")
         except Exception as e:
             print(f"\n[WARNING] Failed to auto-save results: {e}")
 

@@ -147,192 +147,170 @@ class TmaxValidatorId:
 
     # -- Empirical fidelity (noisy idle via ID gates) -------------------------
 
-    def empirical_fidelity(self, n_ids: int, shots: int = 4000,
-                           twirling_seed: int | None = None) -> float:
-        """
-        Measure fidelity = P(|1...1>) after applying *n_ids* identity
-        gates on each qubit.
-
-        The circuit:
-            X^N -> [ID]^n_ids -> measure
-        """
-        if n_ids < 0:
-            raise ValueError(f"n_ids must be >= 0, received: {n_ids}")
-
+    def build_empirical_circuit(
+        self,
+        n_ids: int,
+        twirling_seed: int | None = None,
+    ):
         qc = QuantumCircuit(self.N, self.N)
         twirler = PauliTwirler(
             enabled=self.pauli_twirling,
             seed=self.twirling_seed if twirling_seed is None else twirling_seed,
         )
 
-        # Initialise |1>^N
-        for i in range(self.N):
-            qc.x(i)
+        for i in range(self.N): qc.x(i)
 
-        # Apply n_ids identity gates (each one triggers the constant
-        # thermal_relaxation_error attached to 'id')
-        for _ in range(n_ids):
+        if n_ids > 0:
             for i in range(self.N):
-                twirler.identity(qc, i)
+                for _ in range(n_ids):
+                    qc.id(i)
+
 
         qc.measure(range(self.N), range(self.N))
 
-        # Transpile & run
-        qc_t = transpile(qc, backend=self.backend, optimization_level=0)
-
+        qc_t = transpile(qc, optimization_level=0)
         if self.is_ibm:
-            # Run on real IBM hardware via SamplerV2
-            counts = run_on_ibm(qc_t, self.backend, shots=shots)
-        else:
-            # Run on local AerSimulator with noise model
-            job = self.simulator.run(qc_t, shots=shots)
-            counts = job.result().get_counts()
+            qc_t = transpile(qc, backend=self.backend, optimization_level=0)
 
-        target_state = "1" * self.N
+        target_state = ('1' * self.N)
+        return qc_t, target_state
+
+    def calculate_fidelity(self, counts, target_state, shots) -> dict:
         fidelity_count = 0
         for bitstring, count in counts.items():
-            measured = bitstring.replace(" ", "")[-self.N:]
+            measured = bitstring.replace(' ', '')[-self.N:]
             if measured == target_state:
                 fidelity_count += count
-
         f_raw = fidelity_count / shots
 
-        # ── Error mitigation (opt-in) ─────────────────────────────────────────
-        if not (self.zne_enabled or self.rem_enabled):
-            return f_raw
+        if not getattr(self, 'zne_enabled', False) and not getattr(self, 'rem_enabled', False):
+            return {'f_raw': f_raw}
 
-        mitigation_result = {"f_raw": f_raw}
-
-        # REM: readout error mitigation
-        if self.rem_enabled:
+        mitigation_result = {'f_raw': f_raw}
+        if getattr(self, 'rem_enabled', False):
             try:
-                rem = ReadoutMitigator.from_backend_properties(
-                    self.backend, list(range(self.N))
-                )
+                rem = ReadoutMitigator.from_backend_properties(self.backend, list(range(self.N)))
                 corrected = rem.apply(counts)
                 rem_count = sum(
                     c for b, c in corrected.items()
                     if b.replace(' ', '')[-self.N:] == target_state
                 )
-                mitigation_result["f_rem"] = rem_count / max(sum(corrected.values()), 1)
-            except (ValueError, AttributeError) as e:
-                print(f"    [REM] Skipped: {e}")
-                mitigation_result["f_rem"] = None
-
-        # ZNE: fold at multiple noise factors and extrapolate
-        if self.zne_enabled:
-            folder = ZNEFolder(seed=self.zne_seed)
-            extrapolator = ZNEExtrapolator()
-            zne_raw_fids = {1: f_raw}
-
-            for factor in self.zne_noise_factors:
-                if factor == 1:
-                    continue
-                folded = folder.fold_circuit(qc_t, factor)
-                if self.is_ibm:
-                    zne_counts = run_on_ibm(folded, self.backend, shots=shots)
-                else:
-                    zne_job = self.simulator.run(folded, shots=shots)
-                    zne_counts = zne_job.result().get_counts()
-                zne_fid_count = sum(
-                    c for b, c in zne_counts.items()
-                    if b.replace(' ', '')[-self.N:] == target_state
-                )
-                zne_raw_fids[factor] = zne_fid_count / shots
-
-            factors_sorted = sorted(zne_raw_fids.keys())
-            values = [zne_raw_fids[f] for f in factors_sorted]
-            zne_result = extrapolator.extrapolate(factors_sorted, values, self.zne_extrapolator_method)
-            mitigation_result["f_zne"] = zne_result.bounded
-            mitigation_result["f_zne_raw"] = zne_result.raw
-            mitigation_result["zne_per_factor"] = zne_raw_fids
-
+                mitigation_result['f_rem'] = rem_count / max(sum(corrected.values()), 1)
+            except Exception as e:
+                print(f'    [REM] Skipped: {e}')
+                mitigation_result['f_rem'] = None
         return mitigation_result
-
-    # -- ID characterization (curve_fit) --------------------------------------
-
     def run_id_characterization(
         self,
         m_list: list[int],
         shots: int = 4000,
-        plot_path: str | None = "results/id_decay_curve.png",
+        plot_path: str | None = 'results/tmax_decay_curve_id.png',
     ) -> np.ndarray:
-        """
-        Sweep over different numbers of ID gates, collect fidelity,
-        and fit the Magesan decay model F(m) = A * p^m + B.
+        print('=' * 65)
+        print('  Id -- Phase B: T1/T2 Characterization (Batch Mode)')
+        print('=' * 65)
+        print(f'  Backend      : {self.backend.name}')
+        
+        variant_count = self.twirling_variants if getattr(self, 'pauli_twirling', False) else 1
+        all_circuits = []
+        metadata = []
+        
+        for m in m_list:
+            for variant in range(variant_count):
+                seed = None
+                if getattr(self, 'twirling_seed', None) is not None:
+                    seed = self.twirling_seed + variant * 1_000_003 + int(m) * 1_009
+                qc_t, target = self.build_empirical_circuit(m, seed)
+                
+                all_circuits.append(qc_t)
+                metadata.append({'m': m, 'variant': variant, 'factor': 1, 'target': target})
+                
+                if getattr(self, 'zne_enabled', False):
+                    folder = ZNEFolder(seed=self.zne_seed)
+                    for factor in self.zne_noise_factors:
+                        if factor == 1: continue
+                        folded = folder.fold_circuit(qc_t, factor)
+                        all_circuits.append(folded)
+                        metadata.append({'m': m, 'variant': variant, 'factor': factor, 'target': target})
 
-        Returns:
-            popt  --  array [A_fit, p_fit, B_fit]
-        """
-        print("=" * 65)
-        print("  SQM -- ID Gate Characterization (Constant Error Model)")
-        print("=" * 65)
-        print(f"\n  Backend        : {self.backend.name}")
-        print(f"  N_qubits       : {self.N}")
-        print(f"  T1             : {self.t1_ns:.3f} ns  ({self.t1_ns / 1000:.3f} us)")
-        print(f"  T2             : {self.t2_ns:.3f} ns  ({self.t2_ns / 1000:.3f} us)")
-        print(f"  idle_time/gate : {self.idle_time_ns:.1f} ns")
-        print(f"\n  Measuring F(m) for m = {m_list[:8]} ...")
-        print(f"  shots per point = {shots}\n")
+        print(f'  Generated {len(all_circuits)} circuits for batch execution.')
+        
+        if self.is_ibm:
+            from experiments.utils.ibm_backend_helper import run_on_ibm
+            all_counts = run_on_ibm(all_circuits, self.backend, shots=shots)
+        else:
+            sim = AerSimulator(noise_model=self.noise_model)
+            job = sim.run(all_circuits, shots=shots)
+            res = job.result()
+            all_counts = [res.get_counts(i) for i in range(len(all_circuits))]
 
-        # -- Empirical data collection -----------------------------------------
+        results_map = {}
+        for count_dict, meta in zip(all_counts, metadata):
+            m, v, f = meta['m'], meta['variant'], meta['factor']
+            if (m, v) not in results_map:
+                results_map[(m, v)] = {'raw_counts': None, 'zne_counts': {}, 'meta': meta}
+            if f == 1:
+                results_map[(m, v)]['raw_counts'] = count_dict
+            else:
+                results_map[(m, v)]['zne_counts'][f] = count_dict
+
         m_arr = np.array(m_list, dtype=float)
-        y_data: list[float] = []
-        y_std: list[float] = []
-        variant_count = self.twirling_variants if self.pauli_twirling else 1
-
+        y_data, y_std = [], []
+        
         for m in m_list:
             fidelities = []
             for variant in range(variant_count):
-                seed = None if self.twirling_seed is None else self.twirling_seed + variant * 1_000_003 + m * 1_009
-                f_emp_res = self.empirical_fidelity(m, shots=shots, twirling_seed=seed)
-                if isinstance(f_emp_res, dict):
-                    if f_emp_res.get("f_zne") is not None:
-                        fidelities.append(f_emp_res["f_zne"])
-                    elif f_emp_res.get("f_rem") is not None:
-                        fidelities.append(f_emp_res["f_rem"])
-                    else:
-                        fidelities.append(f_emp_res["f_raw"])
+                rm = results_map[(m, variant)]
+                meta = rm['meta']
+                res = self.calculate_fidelity(rm['raw_counts'], meta['target'], shots)
+                
+                if getattr(self, 'zne_enabled', False):
+                    extrapolator = ZNEExtrapolator()
+                    zne_fids = {1: res['f_raw']}
+                    for f_zne, c_zne in rm['zne_counts'].items():
+                        r_zne = self.calculate_fidelity(c_zne, meta['target'], shots)
+                        zne_fids[f_zne] = r_zne['f_raw']
+                        
+                    factors_sorted = sorted(zne_fids.keys())
+                    values = [zne_fids[fac] for fac in factors_sorted]
+                    zne_result = extrapolator.extrapolate(factors_sorted, values, self.zne_extrapolator_method)
+                    res['f_zne'] = zne_result.bounded
+                    
+                if 'f_zne' in res and res['f_zne'] is not None:
+                    fidelities.append(res['f_zne'])
+                elif 'f_rem' in res and res['f_rem'] is not None:
+                    fidelities.append(res['f_rem'])
                 else:
-                    fidelities.append(f_emp_res)
+                    fidelities.append(res['f_raw'])
+                    
             f_emp = float(np.mean(fidelities))
             f_std = float(np.std(fidelities, ddof=1)) if variant_count > 1 else 0.0
             y_data.append(f_emp)
             y_std.append(f_std)
-            print(f"    m={m:4d}  F_emp = {f_emp:.6f}  std = {f_std:.6f} ({variant_count} variants)")
+            print(f'    m={m:4d} ids  F_emp = {f_emp:.6f}  std = {f_std:.6f} ({variant_count} variants)')
 
         y_arr = np.array(y_data, dtype=float)
+        
+        B_fix = self.B_ideal
+        p0 = [1.0, 0.99, B_fix]
+        bounds = ([0.0, 0.0, 0.0], [1.0, 1e9, 1.0])
+        
+        try:
+            popt, _ = curve_fit(rb_decay_model, m_arr, y_arr, p0=p0, bounds=bounds, maxfev=10_000)
+        except RuntimeError as e:
+            print(f'    [Warning] Curve fit failed: {e}. Using initial parameters.')
+            popt = p0
 
-        # -- curve_fit: F(m) = A * p^m + B ------------------------------------
-        p0     = [0.75, 0.99, self.B_ideal]
-        bounds = ([0.0, 0.0, 0.0], [1.0, 1.0, 1.0])
+        print('\n  Fit completed.')
+        print(f'    A_fit = {popt[0]:.6f}')
+        print(f'    p_fit = {popt[1]:.6f}')
+        print(f'    B_fit = {popt[2]:.6f}')
 
-        popt, _ = curve_fit(
-            rb_decay_model,
-            m_arr,
-            y_arr,
-            p0=p0,
-            bounds=bounds,
-            maxfev=10_000,
-        )
-
-        print(f"\n  Fit completed.")
-        print(f"    A_fit = {popt[0]:.6f}")
-        print(f"    p_fit = {popt[1]:.6f}")
-        print(f"    B_fit = {popt[2]:.6f}")
-
-        # -- Plot (optional) ---------------------------------------------------
         if plot_path is not None:
             self._plot_decay_curve(m_arr, y_arr, popt, plot_path)
-
-        # -- Save to CSV -------------------------------------------------------
-        csv_path = (
-            plot_path.replace(".png", ".csv").replace("results", "data")
-            if plot_path
-            else "data/id_characterization.csv"
-        )
-        self._save_results_to_csv(m_arr, y_arr, popt, csv_path, np.array(y_std))
-
+            csv_path = plot_path.replace('.png', '.csv').replace('results', 'data')
+            self._save_results_to_csv(m_arr, y_arr, popt, csv_path, np.array(y_std))
+            
         return popt
 
     # -- Save results to CSV --------------------------------------------------
@@ -368,6 +346,9 @@ class TmaxValidatorId:
             writer.writerow(["Twirling Variants", self.twirling_variants if self.pauli_twirling else 1])
             writer.writerow(["Twirling Seed", self.twirling_seed if self.twirling_seed is not None else "random"])
             writer.writerow(["Mitigation ZNE", "enabled" if self.zne_enabled else "disabled"])
+            if getattr(self, "zne_enabled", False):
+                writer.writerow(["ZNE Noise Factors", getattr(self, "zne_noise_factors", "[]")])
+                writer.writerow(["ZNE Extrapolator", getattr(self, "zne_extrapolator_method", "N/A")])
             writer.writerow(["Mitigation REM", "enabled" if self.rem_enabled else "disabled"])
             writer.writerow([])
 
@@ -497,7 +478,17 @@ class TmaxValidatorId:
         print("=" * 65)
 
         f_th  = self.theoretical_fidelity(n_test)
-        f_emp = self.empirical_fidelity(n_test)
+        
+        qc_t, target = self.build_empirical_circuit(n_test)
+        if self.is_ibm:
+            from experiments.utils.ibm_backend_helper import run_on_ibm
+            counts = run_on_ibm([qc_t], self.backend, shots=4000)[0]
+        else:
+            sim = AerSimulator(noise_model=self.noise_model)
+            counts = sim.run(qc_t, shots=4000).result().get_counts()
+        res = self.calculate_fidelity(counts, target, 4000)
+        f_emp = res.get('f_zne') or res.get('f_rem') or res.get('f_raw')
+        
         diff  = abs(f_th - f_emp)
         rel   = (diff / f_emp * 100) if f_emp > 0 else float("inf")
         print(f"\n  [m={n_test}]  F_model={f_th:.6f}  F_emp={f_emp:.6f}  "
