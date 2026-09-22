@@ -174,14 +174,20 @@ class CMaxValidatorTeleport:
         """
         Find N disjoint chains of exactly 3 qubits each using QubitMapper.
 
+        Uses SQM naming to trigger noise-aware allocation path:
+        mem_orig_0 -> reg_A, tele_ancilla_0 -> ancilla, mem_backup_0 -> reg_B.
+        q_work is allocated (satisfies 4-qubit chain topology) but unused.
+
         Returns: list of tuples (phys_A, phys_B, phys_ancilla)
         """
         mapper = QubitMapper(self.backend)
 
+        # SQM naming triggers allocate_sqm_per_bit_topology (noise-aware)
         chain_config = [
-            ("reg_A",    self.N),   # Source/destination (ping)
-            ("reg_B",    self.N),   # Destination/source (pong)
-            ("ancilla",  self.N),   # Bell channel ancilla
+            ("q_work",          self.N),   # Allocated for topology, unused in circuit
+            ("mem_orig_0",      self.N),   # reg_A: Source/destination (ping)
+            ("tele_ancilla_0",  self.N),   # ancilla: Bell channel
+            ("mem_backup_0",    self.N),   # reg_B: Destination/source (pong)
         ]
 
         allocation = mapper.allocate_chain_topology(chain_config)
@@ -189,9 +195,9 @@ class CMaxValidatorTeleport:
         chains = []
         for i in range(self.N):
             chains.append((
-                allocation["reg_A"][i],
-                allocation["reg_B"][i],
-                allocation["ancilla"][i],
+                allocation["mem_orig_0"][i],       # phys_A
+                allocation["mem_backup_0"][i],      # phys_B
+                allocation["tele_ancilla_0"][i],    # phys_ancilla
             ))
 
         return chains
@@ -669,8 +675,8 @@ if __name__ == "__main__":
     #              fidelity measured vs |1⟩
     # =========================================================================
     initial_state = 2  # 0 = |0⟩, 1 = |1⟩, 2 = |+⟩ (H), 3 = |-⟩ (XH)
-    m_list = [0, 1, 2, 4, 6, 8, 10, 15, 20, 25, 30, 40, 50, 60, 80, 100]
-    #m_list = [0, 1, 2]
+    #m_list = [0, 1, 2, 4, 6, 8, 10, 15, 20, 25, 30, 40, 50, 60, 80, 100]
+    m_list = [0, 1, 2]
     # 1. DEFINE THE ARCHITECTURE (N = Word width)
     N_qubits = 1 
 

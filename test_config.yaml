@@ -7,7 +7,7 @@ global:
   seed: null
 hardware:
   backend_name: ibm_fez
-  channel: ibm_quatum_platform
+  channel: ibm_quantum
   compiler:
     R: 1
     c_max: 10

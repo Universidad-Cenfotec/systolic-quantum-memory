@@ -545,8 +545,8 @@ if __name__ == "__main__":
         )
 
     # -- Phase B.1: Complete RB characterization -------------------------------
-    m_list = [0, 1, 2, 4, 6, 8, 10, 15, 20, 25, 30, 40, 50, 60, 80, 100]
-    #m_list = [2,4,8]
+    #m_list = [0, 1, 2, 4, 6, 8, 10, 15, 20, 25, 30, 40, 50, 60, 80, 100]
+    m_list = [2,4,8]
     popt = validator.run_rb_characterization(m_list, shots=4000, plot_path = f"results/{prefix}_decay_curve_not_n={N_qubits}{suffix}.png")
 
     # -- Phase B.2: Print results and validate model ---------------------------

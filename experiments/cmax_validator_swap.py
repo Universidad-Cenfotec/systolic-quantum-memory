@@ -583,8 +583,8 @@ if __name__ == "__main__":
 
     # 1. DEFINE THE ARCHITECTURE (N = Word width)
     N_qubits = 1
-    m_list = [0, 1, 2, 4, 6, 8, 10, 15, 20, 25, 30, 40, 50, 60, 80, 100]
-    #m_list = [0, 1, 2, 3, 4]
+    #m_list = [0, 1, 2, 4, 6, 8, 10, 15, 20, 25, 30, 40, 50, 60, 80, 100]
+    m_list = [0, 1, 2, 3, 4]
 
     # Mitigation toggles
     use_zne = False

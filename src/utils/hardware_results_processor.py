@@ -150,7 +150,7 @@ def save_hardware_comparison_results(experiment_results: Dict[str, Any]) -> None
                 'Notes': data['notes']
             })
     
-    print(f"✓ Hardware comparison CSV saved: {csv_path}")
+    print(f"[OK] Hardware comparison CSV saved: {csv_path}")
     
     # ──────────────────────────────────────────────────────────
     # Generate summary CSV (adaptive to scenario count)
@@ -192,7 +192,7 @@ def save_hardware_comparison_results(experiment_results: Dict[str, Any]) -> None
         writer.writerow([''])
         writer.writerow(['Analysis_Status', analysis['thesis_validation']])
     
-    print(f"✓ Hardware summary CSV saved: {summary_path}")
+    print(f"[OK] Hardware summary CSV saved: {summary_path}")
     
     # ──────────────────────────────────────────────────────────
     # Generate comparison graph (adaptive: 1, 2, or 3 bars)
@@ -240,7 +240,7 @@ def save_hardware_comparison_results(experiment_results: Dict[str, Any]) -> None
     
     graph_path = os.path.join(results_dir, f'{graph_base_name}.png')
     plt.savefig(graph_path, dpi=300, bbox_inches='tight')
-    print(f"✓ Hardware comparison graph saved: {graph_path}")
+    print(f"[OK] Hardware comparison graph saved: {graph_path}")
     plt.close()
     
     # ──────────────────────────────────────────────────────────
@@ -250,9 +250,9 @@ def save_hardware_comparison_results(experiment_results: Dict[str, Any]) -> None
     print("\n" + "=" * 70)
     print("RESULTS SAVED")
     print("=" * 70)
-    print(f"✓ CSV Results:  {csv_path}")
-    print(f"✓ CSV Summary:  {summary_path}")
-    print(f"✓ Graph:        {graph_path}")
+    print(f"[OK] CSV Results:  {csv_path}")
+    print(f"[OK] CSV Summary:  {summary_path}")
+    print(f"[OK] Graph:        {graph_path}")
     print("=" * 70 + "\n")
 
 
@@ -420,7 +420,7 @@ def save_hardware_multi_workload_results(all_workload_results: list,
         writer.writeheader()
         writer.writerows(all_csv_rows)
     
-    print(f"\n✓ Multi-workload CSV saved: {csv_path}")
+    print(f"\n[OK] Multi-workload CSV saved: {csv_path}")
     
     # ──────────────────────────────────────────────────────────
     # Generate summary CSV
@@ -452,7 +452,7 @@ def save_hardware_multi_workload_results(all_workload_results: list,
         writer.writerow([''])
         writer.writerow(['Total_Rows', len(all_csv_rows)])
     
-    print(f"✓ Multi-workload summary CSV saved: {summary_path}")
+    print(f"[OK] Multi-workload summary CSV saved: {summary_path}")
     
     # ──────────────────────────────────────────────────────────
     # Generate comparison graph (all workloads x all scenarios)
@@ -469,9 +469,12 @@ def save_hardware_multi_workload_results(all_workload_results: list,
             scenario = item['scenario']
             workload_dict[workload][scenario] = item['fidelity']
         
+        def _extract_number(name):
+            digits = ''.join(c for c in name if c.isdigit())
+            return int(digits) if digits else 0
+            
         # Prepare data for grouped bar chart
-        sorted_workloads = sorted(workload_dict.keys(), 
-                                 key=lambda x: int(x.split()[1]))
+        sorted_workloads = sorted(workload_dict.keys(), key=_extract_number)
         all_scenarios_present = sorted(set(item['scenario'] for item in all_scenarios_data))
         
         # Scenario labels and colors
@@ -535,7 +538,7 @@ def save_hardware_multi_workload_results(all_workload_results: list,
         
         graph_path = os.path.join(results_dir, f'{graph_base_name}.png')
         plt.savefig(graph_path, dpi=300, bbox_inches='tight')
-        print(f"✓ Multi-workload comparison graph saved: {graph_path}")
+        print(f"[OK] Multi-workload comparison graph saved: {graph_path}")
         plt.close()
     
     
@@ -546,10 +549,10 @@ def save_hardware_multi_workload_results(all_workload_results: list,
     print("\n" + "=" * 70)
     print("MULTI-WORKLOAD RESULTS SAVED")
     print("=" * 70)
-    print(f"✓ CSV Results:  {csv_path}")
-    print(f"✓ CSV Summary:  {summary_path}")
+    print(f"[OK] CSV Results:  {csv_path}")
+    print(f"[OK] CSV Summary:  {summary_path}")
     if all_scenarios_data:
-        print(f"✓ Graph:        {graph_path}")
-    print(f"✓ Total Runs:   {len(all_csv_rows)}")
-    print(f"✓ Workloads:    {len(all_workload_results)}")
+        print(f"[OK] Graph:        {graph_path}")
+    print(f"[OK] Total Runs:   {len(all_csv_rows)}")
+    print(f"[OK] Workloads:    {len(all_workload_results)}")
     print("=" * 70 + "\n")

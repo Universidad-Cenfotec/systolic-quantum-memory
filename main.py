@@ -337,7 +337,7 @@ def run_hardware_mode(config: Dict[str, Any]):
                     'mitigation_config': config.get('mitigation', {})
                 }
             )
-            
+             
             print("\n[OK] HARDWARE EXPERIMENT COMPLETE")
             print("  All results saved to results/")
         else:

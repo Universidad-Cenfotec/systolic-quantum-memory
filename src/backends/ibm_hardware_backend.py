@@ -219,7 +219,7 @@ class IBMHardwareBackend(BackendInterface):
     def __init__(
         self,
         backend_name: str = "ibm_kingston",
-        channel: str = "ibm_quantum_platform",
+        channel: str = "ibm_quantum",
         instance: Optional[str] = None,
     ):
         """
@@ -230,7 +230,7 @@ class IBMHardwareBackend(BackendInterface):
         backend_name : str, optional
             Name of IBM Quantum backend (default: "ibm_kingston")
         channel : str, optional
-            Channel for Qiskit Runtime (default: "ibm_quantum")
+            Channel for Qiskit Runtime: 'ibm_quantum' or 'ibm_cloud' (default: "ibm_quantum")
         instance : str, optional
             Instance string (default: None, uses default account)
 
@@ -243,7 +243,7 @@ class IBMHardwareBackend(BackendInterface):
             print(f"[IBMHardwareBackend] Initializing connection to IBM Quantum...")
             
             # Authenticate and get service
-            # Note: channel can be 'ibm_quantum', 'ibm_cloud', or 'local'
+            # Note: channel can be 'ibm_quantum' or 'ibm_cloud'
             # The API accepts string values directly
             service_kwargs = {"channel": channel}
             if instance:
@@ -336,7 +336,7 @@ class IBMHardwareBackend(BackendInterface):
                     f"[IBMHardwareBackend] Warning: Unable to verify measurement support on all qubits."
                 )
 
-            print(f"[IBMHardwareBackend] ✓ Dynamic circuit support validated")
+            print(f"[IBMHardwareBackend] [OK] Dynamic circuit support validated")
 
         except ValueError as e:
             raise e

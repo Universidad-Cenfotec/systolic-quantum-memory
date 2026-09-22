@@ -570,8 +570,8 @@ if __name__ == "__main__":
     # =========================================================================
     # BACKEND MODE: "default" = FakeKyiv simulator | "IBM" = real IBM hardware
     # =========================================================================
-    backend_mode = "default"  # Change to "IBM" to run on real IBM hardware
-    shots = 1024
+    backend_mode = "IBM"  # Change to "IBM" to run on real IBM hardware
+    shots = 400
     twirling = False           # Set to True to enable Pauli twirling
     twirling_variants = 10    # Number of random circuits per delay point
  
@@ -592,7 +592,7 @@ if __name__ == "__main__":
     #   3 = |->  : qubit starts in |-> (X+H gates), H applied before measure,
     #              fidelity measured vs |1>
     # =========================================================================
-    initial_state = 2  # 0 = |0>, 1 = |1>, 2 = |+> (H), 3 = |-> (XH)
+    initial_state = 1  # 0 = |0>, 1 = |1>, 2 = |+> (H), 3 = |-> (XH)
 
     # 1. DEFINE THE ARCHITECTURE (N = Word width)
     N_qubits = 1
@@ -600,12 +600,14 @@ if __name__ == "__main__":
 
     # -- Phase 1: Delay characterization (curve_fit) ---------------------------
     #    Define delay times directly in nanoseconds.
+    #delay_list_ns = [
+    #    0, 100, 250, 500, 750, 1_000, 2_000, 4_000, 
+    #    6_000, 8_000, 10_000, 15_000, 20_000, 30_000, 
+    #    40_000, 50_000, 60_000, 80_000, 100_000, 
+    #    120_000, 150_000, 200_000, 400_000, 600_000]
     delay_list_ns = [
-        0, 100, 250, 500, 750, 1_000, 2_000, 4_000, 
-        6_000, 8_000, 10_000, 15_000, 20_000, 30_000, 
-        40_000, 50_000, 60_000, 80_000, 100_000, 
-        120_000, 150_000, 200_000, 400_000, 600_000]
-    
+         1_000,  6_000, 8_000,   
+        120_000, 200_000,  600_000]
 
     _state_labels = {0: "|0>", 1: "|1>", 2: "|+> (H)", 3: "|-> (XH)"}
     state_label = _state_labels.get(initial_state, f"unknown({initial_state})")
