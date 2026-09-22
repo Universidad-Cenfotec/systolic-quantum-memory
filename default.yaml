@@ -8,8 +8,8 @@
 # Global Settings
 # ============================================================================
 global:
-  backend: simulator            # Options: simulator, hardware
-  seed: null                            # Random seed (null = random)
+  backend: hardware            # Options: simulator, hardware
+  seed: 42                            # Random seed (null = random)
 
 # ============================================================================
 # Simulator Configuration
@@ -20,14 +20,14 @@ simulator:
     R: 1                                # Memory registers
     n: 1                                # Qubits per register
     c_max: 10                         # Gate cost threshold
-    t_max_ns: 30000                  # Time threshold (nanoseconds)
+    t_max_ns: 55000                  # Time threshold (nanoseconds)
     
   # Simulation parameters
   execution: 
     shots: 1024                          # Number of shots
     initial_state: 1                    # 0=|0>, 1=|1>, 2=|+>, 3=|->
     workload_type: delay             # Options: standard, delay, custom
-    scenarios: null                     # null = all, or "1,3" for specific scenarios
+    scenarios: "1,3"                      # null = all, or "1,3" for specific scenarios
     pauli_twirling: False               # Enable randomized compiling on SQM teleportation
     twirling_variants: 5               # Random circuits per workload
     twirling_seed: 42                 # Integer for reproducible variants
@@ -44,21 +44,21 @@ simulator:
 # ============================================================================
 hardware:
   # IBM Quantum connection
-  backend_name: ibm_fez            # IBM backend to use
-  channel: ibm_quatum_platform         # Channel: ibm_quantum_platform or ibm_quantum
+  backend_name: ibm_kingston            # IBM backend to use
+  channel: ibm_quantum_platform                  # Channel: ibm_quantum or ibm_cloud
   # Compiler parameters (same as simulator)
   compiler:
-    R: 1
+    R: 1 
     n: 1
     c_max: 10
-    t_max_ns: 20000
+    t_max_ns: 55000
   
   # Execution parameters
   execution:
     shots: 1024                         # Hardware shots (lower than simulator)
     initial_state: 1
     workload_type: delay
-    scenarios: "1"                     # null = all, or "1,3" for specific scenarios
+    scenarios: "1,3"                     # null = all, or "1,3" for specific scenarios
     pauli_twirling: False               # Enable randomized compiling on SQM teleportation
     twirling_variants: 10               # Random circuits/jobs per workload
     twirling_seed: 42                 # Integer for reproducible variants
@@ -75,11 +75,11 @@ workloads:
   
   delay: 
     description: IDLE delay sweep
-    delays_ns: [10, 20, 40, 80, 100, 150, 200, 300, 400, 500]
     #delays_ns: [10, 20, 40, 80, 100, 150, 200, 300, 400, 500]
+    delays_ns: [10,  40, 80, 100,  200, 400, 500]
     # Auto-generated: WRITE_0 + IDLE_X + READ_0 for each delay X
-  
-  custom:
+    
+  custom: 
     description: Custom workload definitions
     workloads:
       - name: "Test Workload 1"
@@ -114,7 +114,7 @@ advanced:
 # measurements. REM only corrects the final measurement register (final_meas).
 # ZNE folds only top-level unitary gates, never measure/reset/if_test/delay.
 mitigation:
-  enabled: True
+  enabled: False
   target_architecture: sqm            # Options: both, sqm, swap
   hardware:
     max_shots_per_execution: 1024
@@ -124,4 +124,4 @@ mitigation:
     extrapolator: exponential                # Extrapolation method: linear, polynomial, exponential
     zne_seed: null                      # Seed for ZNE reproducibility (null = use global seed)
   rem: 
-    enabled: True                      # Enable Readout Error Mitigation
+    enabled: False                      # Enable Readout Error Mitigation
