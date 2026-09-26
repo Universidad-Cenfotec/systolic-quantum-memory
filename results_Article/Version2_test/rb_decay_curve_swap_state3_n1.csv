@@ -1,0 +1,37 @@
+SQM RB Characterization Results (SWAP protocol)
+Timestamp,2026-09-22T20:05:10.422527
+Backend,ibm_kingston
+Initial State,3 (|-> (XH))
+Architecture,2 registers * 1 qubits = 2 total qubits
+Hilbert Dimension,d = 2^1 = 2
+Native Gate,CZ
+Pauli Twirling,disabled
+Twirling Variants,1
+Twirling Seed,random
+Mitigation ZNE,disabled
+Mitigation REM,disabled
+
+Magesan Fit Parameters
+A (SPAM contrast),0.342968
+p (process decay),0.982514
+B (asymptote),0.632048
+r_empirical,0.008743
+p_swap_theory,0.084831
+
+m (SWAP cycles),F_emp (mean fidelity),F_emp (std),F_fit (fitted)
+0,0.973633,0.000000,0.975016
+1,0.973633,0.000000,0.969019
+2,0.951172,0.000000,0.963127
+4,0.943359,0.000000,0.951650
+6,0.946289,0.000000,0.940570
+8,0.923828,0.000000,0.929875
+10,0.927734,0.000000,0.919551
+15,0.907227,0.000000,0.895279
+20,0.876953,0.000000,0.873056
+25,0.868164,0.000000,0.852709
+30,0.829102,0.000000,0.834080
+40,0.787109,0.000000,0.801408
+50,0.768555,0.000000,0.774019
+60,0.745117,0.000000,0.751059
+80,0.720703,0.000000,0.715679
+100,0.694336,0.000000,0.690817

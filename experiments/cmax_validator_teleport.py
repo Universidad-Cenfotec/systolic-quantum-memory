@@ -256,7 +256,7 @@ class CMaxValidatorTeleport:
             initial_layout[i]              = phys_a
             initial_layout[self.N + i]     = phys_b
             initial_layout[2 * self.N + i] = phys_anc
-        
+        #print(qc.draw(output='text'))
         qc_t = transpile(qc, backend=self.backend, optimization_level=0, initial_layout=initial_layout)
 
         register_layout = MeasurementParser.build_register_layout_from_order(
@@ -674,10 +674,10 @@ if __name__ == "__main__":
     #   3 = |-⟩  : qubit starts in |-⟩ (X+H gates), H applied before measure,
     #              fidelity measured vs |1⟩
     # =========================================================================
-    initial_state = 2  # 0 = |0⟩, 1 = |1⟩, 2 = |+⟩ (H), 3 = |-⟩ (XH)
-    #m_list = [0, 1, 2, 4, 6, 8, 10, 15, 20, 25, 30, 40, 50, 60, 80, 100]
-    m_list = [0, 1, 2]
-    # 1. DEFINE THE ARCHITECTURE (N = Word width)
+    initial_state = 3  # 0 = |0⟩, 1 = |1⟩, 2 = |+⟩ (H), 3 = |-⟩ (XH)
+    m_list = [0, 1, 2, 4, 6, 8, 10, 15, 20, 25, 30, 40,50, 60, 80, 100]
+    #m_list = [2]
+    # 1. DEFINE THE ARCHITECTURE (N = Word width)  
     N_qubits = 1 
 
     # Mitigation toggles 

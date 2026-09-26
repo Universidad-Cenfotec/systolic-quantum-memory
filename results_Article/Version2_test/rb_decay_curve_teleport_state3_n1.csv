@@ -1,0 +1,39 @@
+RB Characterization Results (Multiple Teleportation Protocol)
+Timestamp,2026-09-22T20:00:18.507926
+Backend,ibm_kingston
+Initial State,3 (|-> (XH))
+Architecture,3 registers × 1 qubits = 3 total qubits
+Registers,"reg_A (ping), reg_B (pong), ancilla (Bell channel)"
+Hilbert Dimension,d = 2^1 = 2
+Native Gate,CZ
+Protocol,"SystolicTeleportation (ping-pong, active reset)"
+Pauli Twirling,disabled
+Twirling Variants,1
+Twirling Seed,random
+Mitigation ZNE,disabled
+Mitigation REM,disabled
+
+Magesan Fit Parameters
+A (SPAM contrast),0.471608
+p (process decay per teleport),0.902968
+B (asymptote),0.497758
+r_empirical,0.048516
+p_teleport_theory,0.057385
+
+m (teleport cycles),F_emp (mean fidelity),F_emp (std),F_fit (fitted)
+0,0.969727,0.000000,0.969366
+1,0.908203,0.000000,0.923606
+2,0.883789,0.000000,0.882285
+4,0.816406,0.000000,0.811283
+6,0.773438,0.000000,0.753391
+8,0.714844,0.000000,0.706189
+10,0.662109,0.000000,0.667703
+15,0.595703,0.000000,0.599775
+20,0.549805,0.000000,0.558998
+25,0.512695,0.000000,0.534520
+30,0.519531,0.000000,0.519826
+40,0.505859,0.000000,0.505710
+50,0.492188,0.000000,0.500624
+60,0.534180,0.000000,0.498791
+80,0.500977,0.000000,0.497892
+100,0.488281,0.000000,0.497776

@@ -320,7 +320,7 @@ def save_hardware_multi_workload_results(all_workload_results: list,
         
     csv_base_name = f"{prefix}_hardware_comparison_multi_state{init_state}{suffix}_{timestamp}"
     summary_base_name = f"{prefix}_hardware_summary_multi_state{init_state}{suffix}_{timestamp}"
-    graph_base_name = f"{prefix}_hardware_comparison_multi_graph_state{init_state}{suffix}_{timestamp}"
+    graph_base_name = f"{prefix}_hardware_comparison_multi_state{init_state}{suffix}_{timestamp}"
 
     # ──────────────────────────────────────────────────────────
     # Aggregate all results for CSV

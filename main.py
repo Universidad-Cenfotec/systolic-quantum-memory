@@ -272,7 +272,7 @@ def run_hardware_mode(config: Dict[str, Any]):
     scenarios = parse_scenarios(cfg['execution']['scenarios'])
     print(f"\n[Scenarios]")
     if scenarios:
-        print(f"  Selected: {scenarios}")
+        print(f"  Selected: {scenarios}") 
     else:
         print(f"  Mode: ALL (1, 2, 3)")
     

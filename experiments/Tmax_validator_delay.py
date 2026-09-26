@@ -95,6 +95,9 @@ class TmaxValidatorDelay:
             self.simulator = None
             print(f"[TmaxValidatorDelay] Using IBM hardware backend: {self.backend.name}")
             print(f"[TmaxValidatorDelay] NOTE: delay() is a native hardware instruction.")
+            # Select best physical qubits via noise-aware ranking
+            self.best_qubits = self._select_best_qubits(N)
+            print(f"[TmaxValidatorDelay] Best physical qubits selected: {self.best_qubits}")
         else:
             # 1. Reference backend (calibration snapshot from real IBM Kyiv)
             self.backend = FakeKyiv()
@@ -128,6 +131,66 @@ class TmaxValidatorDelay:
         if self.zne_enabled or self.rem_enabled:
             print(f"[TmaxValidatorDelay] Mitigation: ZNE={'ON' if self.zne_enabled else 'OFF'}, "
                   f"REM={'ON' if self.rem_enabled else 'OFF'}")
+
+    # -- Noise-aware qubit selection (BackendV2 API) ----------------------------
+
+    def _select_best_qubits(self, n: int) -> list[int]:
+        """
+        Select the N best physical qubits from an IBM BackendV2 backend,
+        ranked by a cost function combining readout error and 1/T1 decay.
+
+        This mirrors the noise-aware selection in QubitMapper but works
+        directly with BackendV2's target.qubit_properties (real hardware),
+        instead of BackendV1's backend.properties().
+
+        Cost per qubit = W_READOUT * readout_error + W_T1 / T1
+        Lower cost = better qubit.
+        """
+        W_READOUT = 1.0
+        W_T1 = 1e-6  # scales T1 (seconds) to comparable magnitude
+
+        costs: list[tuple[float, int]] = []
+
+        for q in range(self.backend.num_qubits):
+            cost = 0.0
+            try:
+                # BackendV2: qubit_properties gives T1, T2, readout_error, etc.
+                qprops = self.backend.target.qubit_properties
+                if qprops is not None and q < len(qprops) and qprops[q] is not None:
+                    props = qprops[q]
+                    # Readout error (lower is better)
+                    ro_err = getattr(props, 'readout_error', None)
+                    if ro_err is not None:
+                        cost += W_READOUT * ro_err
+                    # T1 decay penalty (higher T1 is better -> lower cost)
+                    t1_val = getattr(props, 't1', None)
+                    if t1_val is not None and t1_val > 0:
+                        cost += W_T1 / t1_val
+                    else:
+                        cost += 10.0  # heavy penalty if no T1 data
+                else:
+                    cost += 10.0  # heavy penalty if no properties
+            except Exception:
+                cost += 10.0
+            costs.append((cost, q))
+
+        # Sort by cost ascending (best qubits first)
+        costs.sort(key=lambda x: x[0])
+
+        # Log top candidates for transparency
+        print(f"[TmaxValidatorDelay] Top-10 qubit candidates (cost, qubit):")
+        for cost_val, q_idx in costs[:10]:
+            qprops = self.backend.target.qubit_properties
+            ro_err = t1_val = "N/A"
+            if qprops is not None and q_idx < len(qprops) and qprops[q_idx] is not None:
+                p = qprops[q_idx]
+                ro_err = f"{getattr(p, 'readout_error', 'N/A')}"
+                t1_raw = getattr(p, 't1', None)
+                t1_val = f"{t1_raw*1e6:.1f} us" if t1_raw else "N/A"
+            print(f"    qubit {q_idx:3d}  cost={cost_val:.6f}  readout_err={ro_err}  T1={t1_val}")
+
+        selected = [q for _, q in costs[:n]]
+        return selected
 
     # -- Empirical fidelity (noisy idle) --------------------------------------
 
@@ -163,10 +226,15 @@ class TmaxValidatorDelay:
                 twirler.h(qc, i)
 
         qc.measure(range(self.N), range(self.N))
-
-        qc_t = transpile(qc, optimization_level=0)
+        #print(qc.draw(output='text'))
         if self.is_ibm:
-            qc_t = transpile(qc, backend=self.backend, optimization_level=0)
+            # Use noise-aware initial_layout to map logical qubits to best physical qubits
+            initial_layout = self.best_qubits
+            qc_t = transpile(qc, backend=self.backend, optimization_level=0,
+                             initial_layout=initial_layout)
+            print(f"    [Layout] logical->physical: {list(range(self.N))} -> {initial_layout}")
+        else:
+            qc_t = transpile(qc, optimization_level=0)
 
         target_state = ('1' * self.N) if self.initial_state in (1, 3) else ('0' * self.N)
         return qc_t, target_state
@@ -570,14 +638,15 @@ if __name__ == "__main__":
     # =========================================================================
     # BACKEND MODE: "default" = FakeKyiv simulator | "IBM" = real IBM hardware
     # =========================================================================
-    backend_mode = "IBM"  # Change to "IBM" to run on real IBM hardware
-    shots = 400
+    backend_mode = "default"  # Change to "IBM" to run on real IBM hardware
+    shots = 1024
     twirling = False           # Set to True to enable Pauli twirling
     twirling_variants = 10    # Number of random circuits per delay point
  
+
     # Mitigation toggles
     use_zne = False  
-    use_rem = False 
+    use_rem = False  
     mitigation_config = {
         "zne": {"enabled": use_zne, "noise_factors": [1, 3], "extrapolator": "exponential"},
         "rem": {"enabled": use_rem}
@@ -592,7 +661,7 @@ if __name__ == "__main__":
     #   3 = |->  : qubit starts in |-> (X+H gates), H applied before measure,
     #              fidelity measured vs |1>
     # =========================================================================
-    initial_state = 1  # 0 = |0>, 1 = |1>, 2 = |+> (H), 3 = |-> (XH)
+    initial_state = 3  # 0 = |0>, 1 = |1>, 2 = |+> (H), 3 = |-> (XH)
 
     # 1. DEFINE THE ARCHITECTURE (N = Word width)
     N_qubits = 1
@@ -600,15 +669,11 @@ if __name__ == "__main__":
 
     # -- Phase 1: Delay characterization (curve_fit) ---------------------------
     #    Define delay times directly in nanoseconds.
-    #delay_list_ns = [
-    #    0, 100, 250, 500, 750, 1_000, 2_000, 4_000, 
-    #    6_000, 8_000, 10_000, 15_000, 20_000, 30_000, 
-    #    40_000, 50_000, 60_000, 80_000, 100_000, 
-    #    120_000, 150_000, 200_000, 400_000, 600_000]
     delay_list_ns = [
-         1_000,  6_000, 8_000,   
-        120_000, 200_000,  600_000]
-
+       0, 1_000, 2_000, 5_000, 10_000, 20_000, 40_000, 50_000,100_000, 
+       150_000, 200_000, 300_000, 600_000,800_000]
+    #delay_list_ns = [80_0000]  
+ 
     _state_labels = {0: "|0>", 1: "|1>", 2: "|+> (H)", 3: "|-> (XH)"}
     state_label = _state_labels.get(initial_state, f"unknown({initial_state})")
     print(f"[Main] Running with initial_state={initial_state} ({state_label})")

@@ -41,9 +41,22 @@ class QubitMapper:
     # ------------------------------------------------------------------
 
     def _get_calibration_data(self):
-        """Cache backend.properties() and detect the native 2q gate name."""
+        """Cache backend.properties() or backend.target and detect the native 2q gate name."""
         props = None
         gate_name = None
+        
+        # 1. Try BackendV2 Target API first
+        if hasattr(self.backend, 'target') and self.backend.target is not None:
+            self._is_v2 = True
+            props = self.backend.target
+            for candidate in ('cz', 'cx', 'ecr'):
+                if candidate in props:
+                    gate_name = candidate
+                    break
+            return props, gate_name
+
+        # 2. Fallback to BackendV1 Properties API
+        self._is_v2 = False
         try:
             if hasattr(self.backend, 'properties'):
                 props = self.backend.properties()
@@ -62,30 +75,67 @@ class QubitMapper:
         if self._props is None or self._gate_name is None:
             return 0.0  # fallback: topology-only selection
         cost = 0.0
-        # Sum 2q-gate error over consecutive edges in the chain
-        for i in range(len(chain) - 1):
-            u, v = chain[i], chain[i + 1]
-            try:
-                cost += self._props.gate_error(self._gate_name, [u, v])
-            except Exception:
+        
+        if getattr(self, '_is_v2', False):
+            # BackendV2 (Target API)
+            target = self._props
+            # Sum 2q-gate error over consecutive edges in the chain
+            for i in range(len(chain) - 1):
+                u, v = chain[i], chain[i + 1]
                 try:
-                    cost += self._props.gate_error(self._gate_name, [v, u])
+                    err = target[self._gate_name].get((u, v)).error
+                    if err is not None: cost += err
+                    else: cost += 1.0
                 except Exception:
-                    cost += 1.0  # penalise missing calibration
-        # Readout error on ancilla (SQM chain[2] = tele_ancilla)
-        if is_sqm and len(chain) >= 3:
-            try:
-                cost += self._W_READOUT * self._props.readout_error(chain[2])
-            except Exception:
-                pass
-        # T1 decay penalty across all qubits in the chain
-        for q in chain:
-            try:
-                t1_s = self._props.t1(q)
-                if t1_s and t1_s > 0:
-                    cost += self._W_T1 / t1_s
-            except Exception:
-                pass
+                    try:
+                        err = target[self._gate_name].get((v, u)).error
+                        if err is not None: cost += err
+                        else: cost += 1.0
+                    except Exception:
+                        cost += 1.0  # penalise missing calibration
+            # Readout error on ancilla (SQM chain[2] = tele_ancilla)
+            if is_sqm and len(chain) >= 3:
+                try:
+                    ro_err = target['measure'].get((chain[2],)).error
+                    if ro_err is not None: cost += self._W_READOUT * ro_err
+                except Exception:
+                    pass
+            # T1 decay penalty across all qubits in the chain
+            for q in chain:
+                try:
+                    qprops = target.qubit_properties
+                    if qprops is not None and q < len(qprops) and qprops[q] is not None:
+                        t1_s = getattr(qprops[q], 't1', None)
+                        if t1_s is not None and t1_s > 0:
+                            cost += self._W_T1 / t1_s
+                except Exception:
+                    pass
+        else:
+            # BackendV1 (Properties API)
+            # Sum 2q-gate error over consecutive edges in the chain
+            for i in range(len(chain) - 1):
+                u, v = chain[i], chain[i + 1]
+                try:
+                    cost += self._props.gate_error(self._gate_name, [u, v])
+                except Exception:
+                    try:
+                        cost += self._props.gate_error(self._gate_name, [v, u])
+                    except Exception:
+                        cost += 1.0  # penalise missing calibration
+            # Readout error on ancilla (SQM chain[2] = tele_ancilla)
+            if is_sqm and len(chain) >= 3:
+                try:
+                    cost += self._W_READOUT * self._props.readout_error(chain[2])
+                except Exception:
+                    pass
+            # T1 decay penalty across all qubits in the chain
+            for q in chain:
+                try:
+                    t1_s = self._props.t1(q)
+                    if t1_s and t1_s > 0:
+                        cost += self._W_T1 / t1_s
+                except Exception:
+                    pass
         return cost
 
     def _enumerate_sqm_chains(self, exclude: Set[int]) -> List[List[int]]:

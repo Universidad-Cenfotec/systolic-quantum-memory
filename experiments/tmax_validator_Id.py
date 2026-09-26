@@ -110,6 +110,9 @@ class TmaxValidatorId:
             print(f"[TmaxValidatorId] Using IBM hardware backend: {self.backend.name}")
             print(f"[TmaxValidatorId] NOTE: On real hardware, noise is physical.")
             print(f"[TmaxValidatorId]       Custom thermal_relaxation_error is NOT injected.")
+            # Select best physical qubits via noise-aware ranking
+            self.best_qubits = self._select_best_qubits(N)
+            print(f"[TmaxValidatorId] Best physical qubits selected: {self.best_qubits}")
         else:
             # 1. Reference backend
             self.backend = FakeKyiv()
@@ -145,6 +148,59 @@ class TmaxValidatorId:
             print(f"[TmaxValidatorId] Mitigation: ZNE={'ON' if self.zne_enabled else 'OFF'}, "
                   f"REM={'ON' if self.rem_enabled else 'OFF'}")
 
+    # -- Noise-aware qubit selection (BackendV2 API) ----------------------------
+
+    def _select_best_qubits(self, n: int) -> list[int]:
+        """
+        Select the N best physical qubits from an IBM BackendV2 backend,
+        ranked by a cost function combining readout error and 1/T1 decay.
+        """
+        W_READOUT = 1.0
+        W_T1 = 1e-6  # scales T1 (seconds) to comparable magnitude
+
+        costs: list[tuple[float, int]] = []
+
+        for q in range(self.backend.num_qubits):
+            cost = 0.0
+            try:
+                # BackendV2: qubit_properties gives T1, T2, readout_error, etc.
+                qprops = self.backend.target.qubit_properties
+                if qprops is not None and q < len(qprops) and qprops[q] is not None:
+                    props = qprops[q]
+                    # Readout error (lower is better)
+                    ro_err = getattr(props, 'readout_error', None)
+                    if ro_err is not None:
+                        cost += W_READOUT * ro_err
+                    # T1 decay penalty (higher T1 is better -> lower cost)
+                    t1_val = getattr(props, 't1', None)
+                    if t1_val is not None and t1_val > 0:
+                        cost += W_T1 / t1_val
+                    else:
+                        cost += 10.0  # heavy penalty if no T1 data
+                else:
+                    cost += 10.0  # heavy penalty if no properties
+            except Exception:
+                cost += 10.0
+            costs.append((cost, q))
+
+        # Sort by cost ascending (best qubits first)
+        costs.sort(key=lambda x: x[0])
+
+        # Log top candidates for transparency
+        print(f"[TmaxValidatorId] Top-10 qubit candidates (cost, qubit):")
+        for cost_val, q_idx in costs[:10]:
+            qprops = self.backend.target.qubit_properties
+            ro_err = t1_val = "N/A"
+            if qprops is not None and q_idx < len(qprops) and qprops[q_idx] is not None:
+                p = qprops[q_idx]
+                ro_err = f"{getattr(p, 'readout_error', 'N/A')}"
+                t1_raw = getattr(p, 't1', None)
+                t1_val = f"{t1_raw*1e6:.1f} us" if t1_raw else "N/A"
+            print(f"    qubit {q_idx:3d}  cost={cost_val:.6f}  readout_err={ro_err}  T1={t1_val}")
+
+        selected = [q for _, q in costs[:n]]
+        return selected
+
     # -- Empirical fidelity (noisy idle via ID gates) -------------------------
 
     def build_empirical_circuit(
@@ -168,9 +224,13 @@ class TmaxValidatorId:
 
         qc.measure(range(self.N), range(self.N))
 
-        qc_t = transpile(qc, optimization_level=0)
         if self.is_ibm:
-            qc_t = transpile(qc, backend=self.backend, optimization_level=0)
+            initial_layout = self.best_qubits
+            qc_t = transpile(qc, backend=self.backend, optimization_level=0,
+                             initial_layout=initial_layout)
+            print(f"    [Layout] logical->physical: {list(range(self.N))} -> {initial_layout}")
+        else:
+            qc_t = transpile(qc, optimization_level=0)
 
         target_state = ('1' * self.N)
         return qc_t, target_state

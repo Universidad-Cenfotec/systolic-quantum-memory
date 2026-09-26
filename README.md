@@ -640,12 +640,12 @@ Each validator can be switched between `"default"` (FakeKyiv) and `"IBM"` (real 
 - `comparison_results_YYYYMMDD_HHMMSS.csv` — Local simulation comparison data
 - `comparison_graph_YYYYMMDD_HHMMSS.png` — Local simulation comparison graph
 - `hardware_comparison_multi_YYYYMMDD_HHMMSS.csv` — Hardware multi-workload data
-- `hardware_comparison_multi_graph_YYYYMMDD_HHMMSS.png` — Hardware multi-workload graph
+- `hardware_comparison_multi_YYYYMMDD_HHMMSS.png` — Hardware multi-workload graph
 - `rb_decay_curve_<protocol>_n=<N>.png` — RB decay curve for specific protocol
 - `SM_decay_curve_<protocol>_N<n>.csv` — Published decay curve data
 
 ---
-
+ 
 ## Development Phases
 
 | Phase | Focus | Status |
