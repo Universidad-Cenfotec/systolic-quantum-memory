@@ -17,12 +17,14 @@ try:
     from experiments.utils.ibm_backend_helper import get_ibm_backend, run_on_ibm
     from src.utils.pauli_twirling import PauliTwirler
     from src.mitigation import ReadoutMitigator, ZNEFolder, ZNEExtrapolator
+    from best_qubit_mapper import BestQubitMapper
 except ModuleNotFoundError:
     import sys
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
     from experiments.utils.ibm_backend_helper import get_ibm_backend, run_on_ibm
     from src.utils.pauli_twirling import PauliTwirler
     from src.mitigation import ReadoutMitigator, ZNEFolder, ZNEExtrapolator
+    from best_qubit_mapper import BestQubitMapper
 
 
 # =============================================================================
@@ -95,9 +97,11 @@ class TmaxValidatorDelay:
             self.simulator = None
             print(f"[TmaxValidatorDelay] Using IBM hardware backend: {self.backend.name}")
             print(f"[TmaxValidatorDelay] NOTE: delay() is a native hardware instruction.")
-            # Select best physical qubits via noise-aware ranking
-            self.best_qubits = self._select_best_qubits(N)
-            print(f"[TmaxValidatorDelay] Best physical qubits selected: {self.best_qubits}")
+            # Load best physical qubits from pre-computed CSV mapping
+            csv_path = BestQubitMapper.find_mapping_csv(N, True)
+            delay_alloc = BestQubitMapper.load_mapping(csv_path, "delay", N)
+            self.best_qubits = delay_alloc["delay_qubits"]
+            print(f"[TmaxValidatorDelay] Best physical qubits loaded from CSV: {self.best_qubits}")
         else:
             # 1. Reference backend (calibration snapshot from real IBM Kyiv)
             self.backend = FakeKyiv()

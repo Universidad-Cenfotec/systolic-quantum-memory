@@ -26,7 +26,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.backends.backend_interface import BackendInterface
 from src.simulator.sqm_simulator_Flow import SQMFlowCompiler
 from src.simulator.swap_simulator_Flow import SwapFlowCompiler
-from src.functions.qubit_mapper import QubitMapper
+from src.functions.qubit_mapper import QubitMapper  # kept for type compat with result dicts
 from src.utils.hardware_results_processor import save_hardware_comparison_results
 
 
@@ -316,15 +316,8 @@ def run_full_comparison(R: int, n: int, c_max: int, t_max_ns: float,
         if result:
             results.append(result)
             
-            # Visualize qubit allocation comparison only for the first workload
-            if idx == 0 and not qubit_mapping_visualized:
-                if 'sqm' in result and 'swap' in result:
-                    sqm_mapper = result['sqm'].get('qubit_mapper')
-                    swap_mapper = result['swap'].get('qubit_mapper')
-                    if sqm_mapper and swap_mapper:
-                        output_viz_file = f"results/qubit_mapping_comparison_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
-                        QubitMapper.compare_mappers(sqm_mapper, swap_mapper, output_file=output_viz_file)
-                        qubit_mapping_visualized = True
+            # Qubit mapping visualization removed: mapping is now pre-computed
+            # centrally by best_qubit_mapper.py and shared across all experiments.
 
     # Print overall summary
     print("\n\n" + "+" + "=" * 68 + "+")

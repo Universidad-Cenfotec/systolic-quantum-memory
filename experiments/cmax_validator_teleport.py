@@ -16,7 +16,7 @@ from qiskit_ibm_runtime.fake_provider import FakeKyiv
 
 # Handle imports for both direct execution and module import
 try:
-    from src.functions.qubit_mapper import QubitMapper
+    from best_qubit_mapper import BestQubitMapper
     from src.functions.teleportation import SystolicTeleportation
     from src.utils.measurement_parser import MeasurementParser
     from src.mitigation import ReadoutMitigator, ZNEFolder, ZNEExtrapolator
@@ -24,7 +24,7 @@ try:
 except ModuleNotFoundError:
     # Add parent directory to path for direct script execution
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-    from src.functions.qubit_mapper import QubitMapper
+    from best_qubit_mapper import BestQubitMapper
     from src.functions.teleportation import SystolicTeleportation
     from src.utils.measurement_parser import MeasurementParser
     from src.mitigation import ReadoutMitigator, ZNEFolder, ZNEExtrapolator
@@ -172,25 +172,17 @@ class CMaxValidatorTeleport:
 
     def _get_physical_chains(self) -> list[tuple[int, int, int]]:
         """
-        Find N disjoint chains of exactly 3 qubits each using QubitMapper.
+        Find N disjoint chains of 3 qubits (reg_A, reg_B, ancilla)
+        from pre-computed CSV.
 
-        Uses SQM naming to trigger noise-aware allocation path:
-        mem_orig_0 -> reg_A, tele_ancilla_0 -> ancilla, mem_backup_0 -> reg_B.
-        q_work is allocated (satisfies 4-qubit chain topology) but unused.
+        Uses teleport mapping which allocates 4N qubits (SQM topology)
+        but only uses 3N: mem_orig_0 -> reg_A, tele_ancilla_0 -> ancilla,
+        mem_backup_0 -> reg_B.  q_work is allocated for topology but unused.
 
         Returns: list of tuples (phys_A, phys_B, phys_ancilla)
         """
-        mapper = QubitMapper(self.backend)
-
-        # SQM naming triggers allocate_sqm_per_bit_topology (noise-aware)
-        chain_config = [
-            ("q_work",          self.N),   # Allocated for topology, unused in circuit
-            ("mem_orig_0",      self.N),   # reg_A: Source/destination (ping)
-            ("tele_ancilla_0",  self.N),   # ancilla: Bell channel
-            ("mem_backup_0",    self.N),   # reg_B: Destination/source (pong)
-        ]
-
-        allocation = mapper.allocate_chain_topology(chain_config)
+        csv_path = BestQubitMapper.find_mapping_csv(self.N, self.is_ibm)
+        allocation = BestQubitMapper.load_mapping(csv_path, "teleport", self.N)
 
         chains = []
         for i in range(self.N):
@@ -256,7 +248,7 @@ class CMaxValidatorTeleport:
             initial_layout[i]              = phys_a
             initial_layout[self.N + i]     = phys_b
             initial_layout[2 * self.N + i] = phys_anc
-        #print(qc.draw(output='text'))
+        print(qc.draw(output='text'))
         qc_t = transpile(qc, backend=self.backend, optimization_level=0, initial_layout=initial_layout)
 
         register_layout = MeasurementParser.build_register_layout_from_order(
@@ -662,9 +654,16 @@ if __name__ == "__main__":
     # BACKEND MODE: "default" = FakeKyiv simulator | "IBM" = real IBM hardware
     # =========================================================================
     backend_mode = "default"  # Change to "IBM" to run on real IBM hardware
-    twirling = False           # Set to True to enable Pauli twirling
+    twirling = True           # Set to True to enable Pauli twirling
     twirling_variants = 5    # Number of random circuits per teleport point
-    shots = 1024             # Number of shots per circuit 
+    use_zne = True
+    use_rem = False  
+    mitigation_config = {
+        "zne": {"enabled": use_zne, "noise_factors": [1, 3,5], "extrapolator": "exponential"},
+        "rem": {"enabled": use_rem}
+    }  
+    # Extrapolation method: linear, polynomial, exponential
+    # Noise amplification factors (positive odd integers)
     # =========================================================================
     # INITIAL STATE
     #   0 = |0⟩  : qubit starts in |0⟩, fidelity measured vs |0⟩
@@ -674,21 +673,14 @@ if __name__ == "__main__":
     #   3 = |-⟩  : qubit starts in |-⟩ (X+H gates), H applied before measure,
     #              fidelity measured vs |1⟩
     # =========================================================================
-    initial_state = 3  # 0 = |0⟩, 1 = |1⟩, 2 = |+⟩ (H), 3 = |-⟩ (XH)
+    shots = 1024             # Number of shots per circuit 
+    initial_state = 1  # 0 = |0⟩, 1 = |1⟩, 2 = |+⟩ (H), 3 = |-⟩ (XH)
     m_list = [0, 1, 2, 4, 6, 8, 10, 15, 20, 25, 30, 40,50, 60, 80, 100]
     #m_list = [2]
     # 1. DEFINE THE ARCHITECTURE (N = Word width)  
     N_qubits = 1 
 
-    # Mitigation toggles 
-    use_zne = False
-    use_rem = False  
-    mitigation_config = {
-        "zne": {"enabled": use_zne, "noise_factors": [1, 3], "extrapolator": "exponential"},
-        "rem": {"enabled": use_rem}
-    }  
-    # Extrapolation method: linear, polynomial, exponential
-    # Noise amplification factors (positive odd integers)
+
 
     _state_labels = {0: "|0⟩", 1: "|1⟩", 2: "|+⟩ (H)", 3: "|-⟩ (XH)"}
     state_label = _state_labels.get(initial_state, f"unknown({initial_state})")

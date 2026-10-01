@@ -1,0 +1,73 @@
+% This file was created with tikzplotlib v0.10.1.
+\begin{tikzpicture}
+
+\definecolor{darkgray176}{RGB}{176,176,176}
+\definecolor{lightslategray127140141}{RGB}{127,140,141}
+\definecolor{steelblue41128185}{RGB}{41,128,185}
+
+\begin{axis}[
+height=6cm,
+label style={font=\small},
+legend cell align={left},
+legend style={fill opacity=0.9, draw opacity=1, text opacity=1, draw=none},
+legend style={font=\footnotesize},
+tick label style={font=\footnotesize},
+tick pos=both,
+title={SQM vs Base — $|1\rangle$},
+width=\columnwidth,
+x grid style={darkgray176},
+xlabel={Idle Duration (ns)},
+xmajorgrids,
+xmin=-14.5, xmax=524.5,
+xtick style={color=black},
+y grid style={darkgray176},
+ylabel={Fidelity},
+ymajorgrids,
+ymin=0, ymax=1.05,
+ytick style={color=black}
+]
+\addplot [lightslategray127140141, mark=*, mark size=1.75, mark options={solid}]
+table {%
+10 0.92578125
+20 0.8828125
+40 0.7685546875
+80 0.654296875
+100 0.5712890625
+150 0.439453125
+200 0.3251953125
+300 0.1953125
+400 0.1318359375
+500 0.0859375
+};
+\addlegendentry{Base (No Mitigation)}
+\addplot [steelblue41128185, mark=*, mark size=1.75, mark options={solid}]
+table {%
+10 0.912109375
+20 0.873046875
+40 0.7578125
+80 0.5947265625
+100 0.5556640625
+150 0.408203125
+200 0.3388671875
+300 0.208984375
+400 0.1337890625
+500 0.119140625
+};
+\addlegendentry{SQM (No Mitigation)}
+\addplot [steelblue41128185, mark=square*, mark size=1.75, mark options={solid}]
+table {%
+10 0.933417472702268
+20 0.885622560880899
+40 0.765173226884998
+80 0.616095483408687
+100 0.576253255208333
+150 0.4150390625
+200 0.3408203125
+300 0.189778645833333
+400 0.101236979166667
+500 0.0863444010416666
+};
+\addlegendentry{SQM (ZNE)}
+\end{axis}
+
+\end{tikzpicture}

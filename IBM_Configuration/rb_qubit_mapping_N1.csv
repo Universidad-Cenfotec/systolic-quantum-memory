@@ -1,0 +1,5 @@
+experiment_id,backend_name,n_qubits,experiment_type,physical_qubits_list,coupling_edges,avg_gate_error,readout_error_avg,t1_avg_us,t2_avg_us,timestamp
+swap_N1,ibm_kingston,1,swap,"{'q_work': [148], 'mem_0': [149]}","[(148, 149)]",0.00186226,0.00268555,248.19,252.11,2026-10-01T01:57:36.962940+00:00
+sqm_N1,ibm_kingston,1,sqm,"{'q_work': [21], 'mem_orig_0': [36], 'tele_ancilla_0': [41], 'mem_backup_0': [40]}","[(21, 36), (36, 41), (41, 40)]",0.00209176,0.00457764,296.31,188.12,2026-10-01T01:57:36.962940+00:00
+teleport_N1,ibm_kingston,1,teleport,"{'q_work': [21], 'mem_orig_0': [36], 'tele_ancilla_0': [41], 'mem_backup_0': [40]}","[(21, 36), (36, 41), (41, 40)]",0.00209176,0.00457764,296.31,188.12,2026-10-01T01:57:36.962940+00:00
+delay_N1,ibm_kingston,1,delay,{'delay_qubits': [21]},[],0.00000000,0.00244141,290.78,344.37,2026-10-01T01:57:36.962940+00:00

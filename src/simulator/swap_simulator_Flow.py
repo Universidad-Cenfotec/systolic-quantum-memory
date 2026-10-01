@@ -20,7 +20,7 @@ from qiskit.circuit import Instruction
 from src.modular_circuits.memory_register import StorageRegister
 from src.modular_circuits.operation_register import OperationRegister
 from src.functions.work_phase import SystolicWorkPhase
-from src.functions.qubit_mapper import QubitMapper
+from best_qubit_mapper import BestQubitMapper
 from src.utils.measurement_parser import MeasurementParser
 from src.backends.backend_interface import BackendInterface
 from src.backends.aer_simulator_backend import AerSimulatorBackend
@@ -62,8 +62,8 @@ class SwapFlowCompiler:
         # Retrieve base backend device from backend manager for qubit allocation
         self.backend = self.backend_manager.get_backend_device()
         
-        # Initialize QubitMapper for intelligent qubit allocation
-        self.qubit_mapper = QubitMapper(self.backend)
+        # Initialize BestQubitMapper for pre-computed qubit allocation from CSV
+        self.qubit_mapper = BestQubitMapper(self.backend)
         
         # Store thermal parameters for use in compile_workload
         self.time_idle_ns = self.backend_manager.time_idle_ns
@@ -187,7 +187,9 @@ class SwapFlowCompiler:
         print(f"[Compilation] Total qubits needed: {total_qubits_needed}")
         
         # Allocate using per-bit topology
-        allocation_map = self.qubit_mapper.allocate_chain_topology(chain_config)
+        is_ibm = "ibm" in str(type(self.backend_manager)).lower() or "ibm" in getattr(self.backend, "name", "").lower()
+        csv_path = BestQubitMapper.find_mapping_csv(self.n, is_ibm)
+        allocation_map = BestQubitMapper.load_mapping(csv_path, "swap", self.n)
         
         # Map logical qubits to physical qubits for all registers
         for reg_id, physical_qubits in allocation_map.items():
@@ -528,5 +530,5 @@ class SwapFlowCompiler:
             "c_max": self.c_max,
             "t_max_ns": self.t_max_ns,
             "logical_to_physical_map": self.logical_to_physical_map,
-            "available_qubits": len(self.qubit_mapper.available_qubits),
+            "available_qubits": self.qubit_mapper.n_qubits - len(self.logical_to_physical_map),
         }

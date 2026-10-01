@@ -16,15 +16,15 @@ from qiskit_ibm_runtime.fake_provider import FakeKyiv
 
 # Handle imports for both direct execution and module import
 try:
-    from src.functions.qubit_mapper import QubitMapper
+    from best_qubit_mapper import BestQubitMapper
     from src.functions.teleportation import SystolicTeleportation
     from src.utils.measurement_parser import MeasurementParser
     from src.mitigation import ReadoutMitigator, ZNEFolder, ZNEExtrapolator
     from experiments.utils.ibm_backend_helper import get_ibm_backend, run_on_ibm
 except ModuleNotFoundError:
     # Add parent directory to path for direct script execution
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-    from src.functions.qubit_mapper import QubitMapper
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
+    from best_qubit_mapper import BestQubitMapper
     from src.functions.teleportation import SystolicTeleportation
     from src.utils.measurement_parser import MeasurementParser
     from src.mitigation import ReadoutMitigator, ZNEFolder, ZNEExtrapolator
@@ -132,9 +132,9 @@ class CMaxValidator:
 
     def _get_physical_chains(self) -> list[tuple[int, int, int, int]]:
         """
-        Find N disjoint chains of exactly 4 qubits each using QubitMapper.
+        Find N disjoint chains of exactly 4 qubits each from pre-computed CSV.
         
-        Uses SQM per-bit topology where:
+        Uses BestQubitMapper lookup table where:
         - q_work[i]: operation qubit for bit i
         - mem_orig_0[i]: storage qubit for bit i
         - tele_ancilla_0[i]: link alice qubit for bit i
@@ -142,20 +142,8 @@ class CMaxValidator:
         
         Returns: list of tuples (storage, operation, link_alice, link_bob)
         """
-        # Create an instance of QubitMapper from the backend
-        mapper = QubitMapper(self.backend)
-        
-        # Build chain config for SQM with 1 register (R=1)
-        # This will use allocate_sqm_per_bit_topology internally
-        chain_config = [
-            ("q_work", self.N),           # Operation register
-            ("mem_orig_0", self.N),       # Storage register (in mem_orig)
-            ("mem_backup_0", self.N),     # Link Bob (in mem_backup)
-            ("tele_ancilla_0", self.N),   # Link Alice (in tele_ancilla)
-        ]
-        
-        # Allocate using SQM per-bit topology
-        allocation = mapper.allocate_chain_topology(chain_config)
+        csv_path = BestQubitMapper.find_mapping_csv(self.N, self.is_ibm)
+        allocation = BestQubitMapper.load_mapping(csv_path, "sqm", self.N)
         
         # Convert allocation back to tuple format: (storage, operation, link_alice, link_bob)
         chains = []
@@ -215,7 +203,7 @@ class CMaxValidator:
             initial_layout[self.N + i] = phys_o
             initial_layout[2 * self.N + i] = phys_la
             initial_layout[3 * self.N + i] = phys_lb
-            
+        print(qc.draw(output='text'))   
         qc_t = transpile(qc, backend=self.backend, optimization_level=0, initial_layout=initial_layout)
 
         register_layout = MeasurementParser.build_register_layout_from_order(
@@ -596,14 +584,14 @@ if __name__ == "__main__":
 
     # Mitigation toggles
     use_zne = False
-    use_rem = False
+    use_rem = False 
     mitigation_config = {
         "zne": {"enabled": use_zne, "noise_factors": [1, 3], "extrapolator": "linear"},
         "rem": {"enabled": use_rem}
     }
 
     # -- DEFINE THE ARCHITECTURE (N = Word width per register) -----------------
-    N_qubits = 2
+    N_qubits = 1
 
     suffix = ""
     if use_zne: suffix += "Z"
@@ -626,7 +614,8 @@ if __name__ == "__main__":
     
 
     # -- Phase B.1: Complete RB characterization with teleportation ------------
-    m_list = [0, 1, 2, 4, 6, 8, 10, 15, 20, 25, 30, 40, 50, 60, 80, 100]
+    #m_list = [0, 1, 2, 4, 6, 8, 10, 15, 20, 25, 30, 40, 50, 60, 80, 100]
+    m_list = [1,2]
     popt = validator.run_rb_characterization(m_list, shots=1024, plot_path=f"results/{prefix}_decay_curve_sqm_n={N_qubits}{suffix}.png")
 
     # -- Phase B.2: Print results and validate model ---------------------------

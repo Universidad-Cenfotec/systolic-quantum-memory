@@ -129,6 +129,9 @@ def run_simulator_mode(config: Dict[str, Any]):
     print("=" * 80)
     
     cfg = config['simulator']
+    comp = config['compiler']
+    exec_cfg = config['execution']
+    mitig = config.get('mitigation', {})
     
     # Backend configuration
     print("\n[Phase 1: Backend Configuration]")
@@ -151,19 +154,19 @@ def run_simulator_mode(config: Dict[str, Any]):
     
     # Compiler configuration
     print("\n[Phase 2: Compiler Configuration]")
-    print(f"  Memory Registers (R): {cfg['compiler']['R']}")
-    print(f"  Qubits per Register (n): {cfg['compiler']['n']}")
-    print(f"  Gate Cost Threshold: {cfg['compiler']['c_max']}")
-    print(f"  Time Threshold: {cfg['compiler']['t_max_ns']} ns")
-    print(f"  Shots: {cfg['execution']['shots']}")
-    print(f"  Pauli twirling: {'enabled' if cfg['execution'].get('pauli_twirling', False) else 'disabled'} "
-          f"({cfg['execution'].get('twirling_variants', 1)} variants)")
+    print(f"  Memory Registers (R): {comp['R']}")
+    print(f"  Qubits per Register (n): {comp['n']}")
+    print(f"  Gate Cost Threshold: {comp['c_max']}")
+    print(f"  Time Threshold: {comp['t_max_ns']} ns")
+    print(f"  Shots: {exec_cfg['shots']}")
+    print(f"  Pauli twirling: {'enabled' if mitig.get('pauli_twirling', False) else 'disabled'} "
+          f"({mitig.get('twirling_variants', 1)} variants)")
     state_labels = {0: "|0>", 1: "|1>", 2: "|+> (H)", 3: "|-> (XH)"}
-    print(f"  Target State: {state_labels.get(cfg['execution']['initial_state'], 'unknown')}")
+    print(f"  Target State: {state_labels.get(exec_cfg['initial_state'], 'unknown')}")
     
     # Workload selection
     print("\n[Phase 3: Workload Selection]")
-    workload_type = cfg['execution']['workload_type']
+    workload_type = exec_cfg['workload_type']
     print(f"  Type: {workload_type.upper()}")
     
     workloads = generate_workloads_from_config(config, workload_type)
@@ -173,7 +176,7 @@ def run_simulator_mode(config: Dict[str, Any]):
     if len(workloads) > 2:
         print(f"    - ... and {len(workloads) - 2} more")
     
-    scenarios = parse_scenarios(cfg['execution'].get('scenarios'))
+    scenarios = parse_scenarios(exec_cfg.get('scenarios'))
     if scenarios:
         print(f"  Scenarios: {scenarios}")
     else:
@@ -184,22 +187,22 @@ def run_simulator_mode(config: Dict[str, Any]):
     print("=" * 80)
     
     run_full_comparison(
-        R=cfg['compiler']['R'],
-        n=cfg['compiler']['n'],
-        c_max=cfg['compiler']['c_max'],
-        t_max_ns=cfg['compiler']['t_max_ns'],
-        shots=cfg['execution']['shots'],
+        R=comp['R'],
+        n=comp['n'],
+        c_max=comp['c_max'],
+        t_max_ns=comp['t_max_ns'],
+        shots=exec_cfg['shots'],
         workloads=workloads,
-        initial_state=cfg['execution']['initial_state'],
+        initial_state=exec_cfg['initial_state'],
         backend_manager=backend,
-        pauli_twirling=cfg['execution'].get('pauli_twirling', False),
-        twirling_variants=cfg['execution'].get('twirling_variants', 1),
-        twirling_seed=cfg['execution'].get('twirling_seed'),
-        mitigation_config=config.get('mitigation', {}),
-
+        pauli_twirling=mitig.get('pauli_twirling', False),
+        twirling_variants=mitig.get('twirling_variants', 1),
+        twirling_seed=mitig.get('twirling_seed'),
+        mitigation_config=mitig,
     )
     
     print("\n[OK] Simulator mode completed successfully")
+
 
 
 # ============================================================================
@@ -215,6 +218,9 @@ def run_hardware_mode(config: Dict[str, Any]):
     print("=" * 80 + "\n")
     
     cfg = config['hardware']
+    comp = config['compiler']
+    exec_cfg = config['execution']
+    mitig = config.get('mitigation', {})
     
     # Phase 1: Backend connection
     print("PHASE 1: IBM QUANTUM BACKEND CONNECTION")
@@ -250,15 +256,15 @@ def run_hardware_mode(config: Dict[str, Any]):
     print("=" * 80)
     
     print(f"\n[Compiler Parameters]")
-    print(f"  R={cfg['compiler']['R']}, n={cfg['compiler']['n']}, c_max={cfg['compiler']['c_max']}, t_max={cfg['compiler']['t_max_ns']} ns")
-    print(f"  Shots: {cfg['execution']['shots']}")
-    print(f"  Pauli twirling: {'enabled' if cfg['execution'].get('pauli_twirling', False) else 'disabled'} "
-          f"({cfg['execution'].get('twirling_variants', 1)} variants)")
+    print(f"  R={comp['R']}, n={comp['n']}, c_max={comp['c_max']}, t_max={comp['t_max_ns']} ns")
+    print(f"  Shots: {exec_cfg['shots']}")
+    print(f"  Pauli twirling: {'enabled' if mitig.get('pauli_twirling', False) else 'disabled'} "
+          f"({mitig.get('twirling_variants', 1)} variants)")
     state_labels = {0: "|0>", 1: "|1>", 2: "|+> (H)", 3: "|-> (XH)"}
-    print(f"  Target State: {state_labels.get(cfg['execution']['initial_state'], 'unknown')}")
+    print(f"  Target State: {state_labels.get(exec_cfg['initial_state'], 'unknown')}")
     
     # Workloads
-    workload_type = cfg['execution']['workload_type']
+    workload_type = exec_cfg['workload_type']
     workloads = generate_workloads_from_config(config, workload_type)
     
     print(f"\n[Workloads]")
@@ -269,7 +275,7 @@ def run_hardware_mode(config: Dict[str, Any]):
         print(f"  ... {len(workloads) - 2} more")
     
     # Scenarios
-    scenarios = parse_scenarios(cfg['execution']['scenarios'])
+    scenarios = parse_scenarios(exec_cfg['scenarios'])
     print(f"\n[Scenarios]")
     if scenarios:
         print(f"  Selected: {scenarios}") 
@@ -277,7 +283,7 @@ def run_hardware_mode(config: Dict[str, Any]):
         print(f"  Mode: ALL (1, 2, 3)")
     
     print(f"\n[OK] Configuration validated")
-    print(f"  Qubits required: ~{cfg['compiler']['n'] * (cfg['compiler']['R'] + 2)}")
+    print(f"  Qubits required: ~{comp['n'] * (comp['R'] + 2)}")
     print(f"  Qubits available: {backend_info['num_qubits']}")
     
     # Phase 3: Execution
@@ -293,19 +299,19 @@ def run_hardware_mode(config: Dict[str, Any]):
             print(f"{'-' * 80}")
             
             results = run_real_comparison(
-                R=cfg['compiler']['R'],
-                n=cfg['compiler']['n'],
-                c_max=cfg['compiler']['c_max'],
-                t_max_ns=cfg['compiler']['t_max_ns'],
-                shots=cfg['execution']['shots'],
+                R=comp['R'],
+                n=comp['n'],
+                c_max=comp['c_max'],
+                t_max_ns=comp['t_max_ns'],
+                shots=exec_cfg['shots'],
                 workload=workload_data,
                 backend_manager=backend,
-                initial_state=cfg['execution']['initial_state'],
+                initial_state=exec_cfg['initial_state'],
                 scenarios=scenarios,
-                pauli_twirling=cfg['execution'].get('pauli_twirling', False),
-                twirling_variants=cfg['execution'].get('twirling_variants', 1),
-                twirling_seed=cfg['execution'].get('twirling_seed'),
-                mitigation_config=config.get('mitigation', {})
+                pauli_twirling=mitig.get('pauli_twirling', False),
+                twirling_variants=mitig.get('twirling_variants', 1),
+                twirling_seed=mitig.get('twirling_seed'),
+                mitigation_config=mitig
             )
             
             if results:
@@ -325,16 +331,16 @@ def run_hardware_mode(config: Dict[str, Any]):
                 all_workload_results=all_results,
                 backend_info=backend_info,
                 params={
-                    'R': cfg['compiler']['R'],
-                    'n': cfg['compiler']['n'],
-                    'c_max': cfg['compiler']['c_max'],
-                    't_max_ns': cfg['compiler']['t_max_ns'],
-                    'shots': cfg['execution']['shots'],
-                    'initial_state': cfg['execution']['initial_state'],
-                    'pauli_twirling': cfg['execution'].get('pauli_twirling', False),
-                    'twirling_variants': cfg['execution'].get('twirling_variants', 1),
-                    'twirling_seed': cfg['execution'].get('twirling_seed'),
-                    'mitigation_config': config.get('mitigation', {})
+                    'R': comp['R'],
+                    'n': comp['n'],
+                    'c_max': comp['c_max'],
+                    't_max_ns': comp['t_max_ns'],
+                    'shots': exec_cfg['shots'],
+                    'initial_state': exec_cfg['initial_state'],
+                    'pauli_twirling': mitig.get('pauli_twirling', False),
+                    'twirling_variants': mitig.get('twirling_variants', 1),
+                    'twirling_seed': mitig.get('twirling_seed'),
+                    'mitigation_config': mitig
                 }
             )
              
@@ -366,8 +372,8 @@ def main():
     print(f"  > Backend: {backend}")
     
     # Auto-adjust shots for hardware if using default
-    if backend == 'hardware' and config['hardware']['execution']['shots'] == 4000:
-        config['hardware']['execution']['shots'] = 1024
+    if backend == 'hardware' and config['execution']['shots'] == 4000:
+        config['execution']['shots'] = 1024
         print("  > Auto-adjusted hardware shots to 1024 (from 4000)")
     
     print()

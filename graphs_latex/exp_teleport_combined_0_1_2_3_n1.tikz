@@ -1,0 +1,113 @@
+% This file was created with tikzplotlib v0.10.1.
+\begin{tikzpicture}
+
+\definecolor{darkgray176}{RGB}{176,176,176}
+\definecolor{firebrick1925743}{RGB}{192,57,43}
+\definecolor{gold24119615}{RGB}{241,196,15}
+\definecolor{mediumseagreen3917496}{RGB}{39,174,96}
+\definecolor{steelblue41128185}{RGB}{41,128,185}
+
+\begin{axis}[
+height=6cm,
+label style={font=\small},
+legend cell align={left},
+legend style={fill opacity=0.9, draw opacity=1, text opacity=1, draw=none},
+legend style={font=\footnotesize},
+tick label style={font=\footnotesize},
+tick pos=both,
+title={Teleportation (SQM) — All States},
+width=\columnwidth,
+x grid style={darkgray176},
+xlabel={Teleportation Cycles ($m$)},
+xmajorgrids,
+xmin=-5, xmax=105,
+xtick style={color=black},
+y grid style={darkgray176},
+ylabel={Fidelity},
+ymajorgrids,
+ymin=0, ymax=1.05,
+ytick style={color=black}
+]
+\addplot [line width=0.48pt, steelblue41128185]
+table {%
+0 0.996094
+1 0.955078
+2 0.961914
+4 0.951172
+6 0.928711
+8 0.905273
+10 0.874023
+15 0.810547
+20 0.826172
+25 0.750977
+30 0.744141
+40 0.686523
+50 0.633789
+60 0.59375
+80 0.595703
+100 0.558594
+};
+\addlegendentry{$|0\rangle$ - Base (No Mitigation)}
+\addplot [line width=0.48pt, firebrick1925743]
+table {%
+0 0.993164
+1 0.96582
+2 0.96582
+4 0.94043
+6 0.90332
+8 0.893555
+10 0.900391
+15 0.81543
+20 0.800781
+25 0.75
+30 0.733398
+40 0.68457
+50 0.628906
+60 0.62207
+80 0.567383
+100 0.5625
+};
+\addlegendentry{$|1\rangle$ - Base (No Mitigation)}
+\addplot [line width=0.48pt, gold24119615]
+table {%
+0 0.996094
+1 0.943359
+2 0.94043
+4 0.873047
+6 0.816406
+8 0.779297
+10 0.776367
+15 0.716797
+20 0.625
+25 0.59668
+30 0.555664
+40 0.523438
+50 0.508789
+60 0.480469
+80 0.519531
+100 0.487305
+};
+\addlegendentry{$|+\rangle$ - Base (No Mitigation)}
+\addplot [line width=0.48pt, mediumseagreen3917496]
+table {%
+0 0.989258
+1 0.941406
+2 0.941406
+4 0.892578
+6 0.851562
+8 0.789062
+10 0.757812
+15 0.6875
+20 0.65625
+25 0.599609
+30 0.578125
+40 0.524414
+50 0.512695
+60 0.506836
+80 0.50293
+100 0.506836
+};
+\addlegendentry{$|-\rangle$ - Base (No Mitigation)}
+\end{axis}
+
+\end{tikzpicture}

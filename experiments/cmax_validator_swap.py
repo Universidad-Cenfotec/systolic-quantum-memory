@@ -14,7 +14,7 @@ from qiskit_ibm_runtime.fake_provider import FakeKyiv
 
 # Handle imports for both direct execution and module import
 try:
-    from src.functions.qubit_mapper import QubitMapper
+    from best_qubit_mapper import BestQubitMapper
     from src.utils.measurement_parser import MeasurementParser
     from src.utils.pauli_twirling import PauliTwirler
     from src.mitigation import ReadoutMitigator, ZNEFolder, ZNEExtrapolator
@@ -22,7 +22,7 @@ try:
 except ModuleNotFoundError:
     # Add parent directory to path for direct script execution
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-    from src.functions.qubit_mapper import QubitMapper
+    from best_qubit_mapper import BestQubitMapper
     from src.utils.measurement_parser import MeasurementParser
     from src.utils.pauli_twirling import PauliTwirler
     from src.mitigation import ReadoutMitigator, ZNEFolder, ZNEExtrapolator
@@ -190,16 +190,14 @@ class CMaxValidator:
 
         qc.measure(measure_qubits, range(self.N))
 
-        mapper = QubitMapper(self.backend)
-        allocation = mapper.allocate_chain_topology(
-            chain_config=[("q_work", self.N), ("mem_0", self.N)]
-        )
+        csv_path = BestQubitMapper.find_mapping_csv(self.N, self.is_ibm)
+        allocation = BestQubitMapper.load_mapping(csv_path, "swap", self.N)
 
         initial_layout = [0] * (2 * self.N)
         for i in range(self.N):
             initial_layout[i] = allocation["mem_0"][i]
             initial_layout[self.N + i] = allocation["q_work"][i]
-        #print(qc.draw(output='text'))
+
         qc_t = transpile(qc, backend=self.backend, optimization_level=0, initial_layout=initial_layout)
 
         target_state = ('1' * self.N) if self.initial_state in (1, 3) else ('0' * self.N)
@@ -566,10 +564,19 @@ if __name__ == "__main__":
     # =========================================================================
     # BACKEND MODE: "default" = FakeKyiv simulator | "IBM" = real IBM hardware
     # =========================================================================
-    backend_mode = "IBM"  # Change to "IBM" to run on real IBM hardware
+    backend_mode = "default"  # Change to "IBM" to run on real IBM hardware
     twirling = False           # Set to True to enable Pauli twirling
     twirling_variants = 10    # Number of random circuits per RB point
-    shots = 1024
+        # Mitigation toggles
+    use_zne = True
+    use_rem = False
+    mitigation_config = {
+        "zne": {"enabled": use_zne, "noise_factors": [1, 3,5], "extrapolator": "exponential"},
+        "rem": {"enabled": use_rem}
+    } 
+        # Extrapolation method: linear, polynomial, exponential
+    # Noise amplification factors (positive odd integers)
+
     # =========================================================================
     # INITIAL STATE
     #   0 = |0⟩  : qubit starts in |0⟩, fidelity measured vs |0⟩
@@ -579,22 +586,14 @@ if __name__ == "__main__":
     #   3 = |-⟩  : qubit starts in |-⟩ (X+H gates), H applied before measure,
     #              fidelity measured vs |1⟩
     # =========================================================================
-    initial_state = 0  # 0 = |0⟩, 1 = |1⟩, 2 = |+⟩ (H), 3 = |-⟩ (XH)
-
+    initial_state = 1  # 0 = |0⟩, 1 = |1⟩, 2 = |+⟩ (H), 3 = |-⟩ (XH)
+    shots = 1024
     # 1. DEFINE THE ARCHITECTURE (N = Word width)
     N_qubits = 1
     m_list = [0, 1, 2, 4, 6, 8, 10, 15, 20, 25, 30, 40,50, 60, 80, 100]
-    #m_list = [0, 1, 2, 3, 4]
+    #m_list = [0, 1, 2, 3, 4] 
 
-    # Mitigation toggles
-    use_zne = False
-    use_rem = False
-    mitigation_config = {
-        "zne": {"enabled": use_zne, "noise_factors": [1, 3,5], "extrapolator": "exponential"},
-        "rem": {"enabled": use_rem}
-    } 
-        # Extrapolation method: linear, polynomial, exponential
-    # Noise amplification factors (positive odd integers)
+
 
     _state_labels = {0: "|0⟩", 1: "|1⟩", 2: "|+⟩ (H)", 3: "|-⟩ (XH)"}
     state_label = _state_labels.get(initial_state, f"unknown({initial_state})")
