@@ -73,8 +73,11 @@ SQM/
 ├── data/                                   # Experiment output data (CSV)
 ├── results/                                # Simulation graphs (PNG)
 ├── results_Article/                        # Published article results (CSV + PNG)
-├── main.py                                 # Entry point: local simulation (AerSimulator)
-├── main_hardware_experiment.py             # Entry point: IBM Quantum hardware experiment
+├── IBM_Configuration/                      # Topologies and configuration of IBM HW
+├── default.yaml                            # Primary configuration file (YAML)
+├── best_qubit_mapper.py                    # Script to find optimal qubit mapping topologies on hardware
+├── generate_graphs.py                      # Script to generate plots and graphs from experimental data
+├── main.py                                 # Entry point: local simulation & hardware experiments
 ├── requirements.txt                        # Python dependencies
 ├── pyrightconfig.json                      # Type checker configuration
 ├── LICENSE                                 # Open-source license
@@ -129,7 +132,7 @@ python main.py
 
 ### 5. Run Hardware Experiment (IBM Quantum)
 ```powershell
-python main_hardware_experiment.py
+python main.py --backend hardware --scenario 1,3
 ```
 
 ---
@@ -356,9 +359,9 @@ workload2 = ["WRITE_0", "IDLE_20", "READ_0"]
 
 ---
 
-### `main_hardware_experiment.py` — IBM Quantum Hardware
+### Hardware Execution via `main.py` — IBM Quantum Hardware
 
-Executes multi-scenario, multi-workload experiments on real IBM Quantum hardware.
+Executes multi-scenario, multi-workload experiments on real IBM Quantum hardware. This is triggered by running `main.py` with `--backend hardware`.
 
 **Scenarios:**
 | Scenario | Configuration | Purpose |
@@ -368,15 +371,7 @@ Executes multi-scenario, multi-workload experiments on real IBM Quantum hardware
 | **3** | SQM with real timing | Backend-calibrated decoherence |
 
 **Configuration:**
-```python
-# Hardware execution
-shots = 1000       # Keep low to preserve IBM quota
-flow = 1           # 0 = memory registers, 1 = operation register
-initial_state = 3  # 0 = |0⟩, 1 = |1⟩, 2 = |+⟩, 3 = |−⟩
-
-# Scenario selection
-scenario = [1, 3]  # Run specific scenarios (or [1, 2, 3] for all)
-```
+Controlled via `default.yaml` or CLI arguments (e.g. `--scenario 1,3`, `--shots 1000`).
 
 **Output:**
 - Multi-workload CSV results → `data/hardware_comparison_multi_*.csv`
@@ -394,7 +389,7 @@ scenario = [1, 3]  # Run specific scenarios (or [1, 2, 3] for all)
 | `aer_simulator_backend.py` | `AerSimulatorBackend` | Local FakeKyiv + thermal relaxation noise model |
 | `ibm_hardware_backend.py` | `IBMHardwareBackend` | Real IBM Quantum via SamplerV2 + dynamic calibration |
 
-The backend layer uses **dependency injection**: backends are created in `main.py` / `main_hardware_experiment.py` and passed to compilers and comparison functions. This decouples circuit compilation from execution.
+The backend layer uses **dependency injection**: backends are created in `main.py` and passed to compilers and comparison functions. This decouples circuit compilation from execution.
 
 **Key features:**
 - `AerSimulatorBackend`: Configurable T1/T2/idle noise, `id()` gate for idle periods
@@ -662,22 +657,22 @@ Each validator can be switched between `"default"` (FakeKyiv) and `"IBM"` (real 
 
 ---
 
-## Recent Changes (April 2026)
+## Recent Changes (October 2026)
+
+### ✅ Unified Architecture & Configuration
+- `main_hardware_experiment.py` merged into `main.py`. Execution modes are now controlled via `default.yaml` configuration or CLI arguments (`--backend hardware`).
+- Added robust YAML-based configuration framework (`default.yaml`) for dynamic overrides, custom topologies, and repeatable experimental setups.
+- Introduced `best_qubit_mapper.py` for systematic search of optimal qubit topologies on real hardware, storing mapping data in `IBM_Configuration/`.
+- Isolated graph generation to `generate_graphs.py` for easy post-processing of CSV outputs.
 
 ### ✅ Backend Abstraction Layer
 - Added `BackendInterface` abstract class with dependency injection pattern
 - `AerSimulatorBackend` wraps FakeKyiv with configurable thermal relaxation
 - `IBMHardwareBackend` wraps real IBM hardware with SamplerV2, `MockResult`/`MockJob` for V1 compatibility, immutable `time_idle_ns` after calibration
 
-### ✅ IBM Quantum Hardware Execution
-- `main_hardware_experiment.py` — Multi-scenario, multi-workload hardware experiments
-- 3 experimental scenarios (SWAP baseline, SQM no-delay, SQM real timing)
-- Selectable scenario execution (`scenario = [1, 3]`)
-- Hardware results processor with adaptive graph generation (1, 2, or 3 bars)
-
 ### ✅ Flow Simulators (Operation Register Fidelity)
 - `SQMFlowCompiler` and `SwapFlowCompiler` — measure fidelity on `q_work` instead of memory registers
-- `flow` parameter in `main.py` and `main_hardware_experiment.py` toggles between memory and flow modes
+- `flow` parameter in configuration toggles between memory and flow modes
 
 ### ✅ Superposition State Support
 - `initial_state = 2` → |+⟩ (Hadamard gate), fidelity target = |0⟩
