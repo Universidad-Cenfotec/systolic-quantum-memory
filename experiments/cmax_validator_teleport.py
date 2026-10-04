@@ -657,7 +657,7 @@ if __name__ == "__main__":
     twirling = True           # Set to True to enable Pauli twirling
     twirling_variants = 5    # Number of random circuits per teleport point
     use_zne = True
-    use_rem = False  
+    use_rem = True  
     mitigation_config = {
         "zne": {"enabled": use_zne, "noise_factors": [1, 3,5], "extrapolator": "exponential"},
         "rem": {"enabled": use_rem}

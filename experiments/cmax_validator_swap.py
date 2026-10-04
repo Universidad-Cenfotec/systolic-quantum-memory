@@ -565,11 +565,11 @@ if __name__ == "__main__":
     # BACKEND MODE: "default" = FakeKyiv simulator | "IBM" = real IBM hardware
     # =========================================================================
     backend_mode = "default"  # Change to "IBM" to run on real IBM hardware
-    twirling = False           # Set to True to enable Pauli twirling
+    twirling = True           # Set to True to enable Pauli twirling
     twirling_variants = 10    # Number of random circuits per RB point
         # Mitigation toggles
     use_zne = True
-    use_rem = False
+    use_rem = True
     mitigation_config = {
         "zne": {"enabled": use_zne, "noise_factors": [1, 3,5], "extrapolator": "exponential"},
         "rem": {"enabled": use_rem}

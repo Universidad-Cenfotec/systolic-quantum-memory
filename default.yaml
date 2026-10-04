@@ -17,7 +17,7 @@ global:
 compiler:
   R: 1                                # Memory registers
   n: 1                                # Qubits per register
-  c_max: 10                         # Gate cost threshold
+  c_max: 50                         # Gate cost threshold
   t_max_ns: 30000                  # Time threshold (nanoseconds)
 
 # ============================================================================
@@ -99,17 +99,17 @@ advanced:
 # measurements. REM only corrects the final measurement register (final_meas).
 # ZNE folds only top-level unitary gates, never measure/reset/if_test/delay.
 mitigation:
-  enabled: False
-  target_architecture: sqm            # Options: both, sqm, swap
-  pauli_twirling: False               # Enable randomized compiling on SQM teleportation
+  enabled: True
+  target_architecture: both            # Options: both, sqm, swap
+  pauli_twirling: True               # Enable randomized compiling on SQM teleportation
   twirling_variants: 10               # Random circuits/jobs per workload
   twirling_seed: 42                   # Integer for reproducible variants
   hardware:
     max_shots_per_execution: 1024
   zne:
-    enabled: False                      # Enable Zero Noise Extrapolation
+    enabled: True                      # Enable Zero Noise Extrapolation
     noise_factors: [1,3,5]               # Noise amplification factors (positive odd integers)
     extrapolator: exponential                # Extrapolation method: linear, polynomial, exponential
     zne_seed: null                      # Seed for ZNE reproducibility (null = use global seed)
   rem: 
-    enabled: False                      # Enable Readout Error Mitigation
+    enabled: True                      # Enable Readout Error Mitigation
