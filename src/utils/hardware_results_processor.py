@@ -262,7 +262,9 @@ def save_hardware_comparison_results(experiment_results: Dict[str, Any]) -> None
 
 def save_hardware_multi_workload_results(all_workload_results: list, 
                                         backend_info: Dict[str, Any],
-                                        params: Dict[str, Any]) -> None:
+                                        params: Dict[str, Any],
+                                        output_data_dir: Optional[str] = None,
+                                        output_results_dir: Optional[str] = None) -> None:
     """
     Save multi-workload hardware experiment results to CSV and generate comparison graph.
     
@@ -278,6 +280,10 @@ def save_hardware_multi_workload_results(all_workload_results: list,
         Backend information from IBMHardwareBackend
     params : Dict[str, Any]
         Experiment parameters (R, n, c_max, t_max_ns, shots, initial_state)
+    output_data_dir : str, optional
+        Custom directory for CSV data outputs.
+    output_results_dir : str, optional
+        Custom directory for graph/image outputs.
     """
     
     if not all_workload_results:
@@ -286,8 +292,8 @@ def save_hardware_multi_workload_results(all_workload_results: list,
     
     # Create data directory if it doesn't exist
     base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    data_dir = os.path.join(base_dir, 'data')
-    results_dir = os.path.join(base_dir, 'results')
+    data_dir = output_data_dir if output_data_dir else os.path.join(base_dir, 'data')
+    results_dir = output_results_dir if output_results_dir else os.path.join(base_dir, 'results')
     os.makedirs(data_dir, exist_ok=True)
     os.makedirs(results_dir, exist_ok=True)
     

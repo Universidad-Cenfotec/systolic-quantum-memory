@@ -221,6 +221,7 @@ class IBMHardwareBackend(BackendInterface):
         backend_name: str = "ibm_kingston",
         channel: str = "ibm_quantum",
         instance: Optional[str] = None,
+        idle_time_ns: Optional[float] = None,
     ):
         """
         Initialize IBM Hardware backend.
@@ -233,6 +234,11 @@ class IBMHardwareBackend(BackendInterface):
             Channel for Qiskit Runtime: 'ibm_quantum' or 'ibm_cloud' (default: "ibm_quantum")
         instance : str, optional
             Instance string (default: None, uses default account)
+        idle_time_ns : float, optional
+            Fixed duration of one IDLE unit in nanoseconds. If provided, the
+            readout-based calibration is skipped (e.g. 1000 -> 1 unit = 1 us,
+            matching the simulator and Tmax_validator_delay). If None, the
+            idle time is calibrated from the backend's measure duration.
 
         Raises
         ------
@@ -263,8 +269,17 @@ class IBMHardwareBackend(BackendInterface):
             self.sampler = SamplerV2(mode=self.backend)
             print(f"[IBMHardwareBackend] SamplerV2 initialized")
 
-            # Calibrate idle time from backend data
-            self._calibrate_idle_time()
+            # Idle time: fixed override from config, or calibrate from backend data
+            if idle_time_ns is not None:
+                if idle_time_ns <= 0:
+                    raise ValueError(f"idle_time_ns must be > 0, received: {idle_time_ns}")
+                self._time_idle_ns = int(idle_time_ns)
+                print(
+                    f"[IBMHardwareBackend] Using fixed idle time from config: "
+                    f"{self._time_idle_ns} ns per unit (calibration skipped)"
+                )
+            else:
+                self._calibrate_idle_time()
 
         except Exception as e:
             raise RuntimeError(

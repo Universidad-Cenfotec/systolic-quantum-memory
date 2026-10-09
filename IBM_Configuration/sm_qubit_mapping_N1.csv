@@ -1,5 +1,5 @@
 experiment_id,backend_name,n_qubits,experiment_type,physical_qubits_list,coupling_edges,avg_gate_error,readout_error_avg,t1_avg_us,t2_avg_us,timestamp
-swap_N1,fake_kyiv,1,swap,"{'q_work': [120], 'mem_0': [119]}","[(120, 119)]",0.00420244,0.00235000,351.47,361.38,2026-10-01T01:56:30.315861+00:00
-sqm_N1,fake_kyiv,1,sqm,"{'q_work': [43], 'mem_orig_0': [42], 'tele_ancilla_0': [41], 'mem_backup_0': [53]}","[(43, 42), (42, 41), (41, 53)]",0.00718287,0.00287500,294.53,231.13,2026-10-01T01:56:30.315861+00:00
-teleport_N1,fake_kyiv,1,teleport,"{'q_work': [43], 'mem_orig_0': [42], 'tele_ancilla_0': [41], 'mem_backup_0': [53]}","[(43, 42), (42, 41), (41, 53)]",0.00718287,0.00287500,294.53,231.13,2026-10-01T01:56:30.315861+00:00
-delay_N1,fake_kyiv,1,delay,{'delay_qubits': [1]},[],0.00000000,0.00090000,569.01,232.08,2026-10-01T01:56:30.315861+00:00
+swap_N1,fake_kyiv,1,swap,"{'q_work': [96], 'mem_0': [97]}","[(96, 97)]",0.00681204,0.00268555,231.08,207.99,2026-10-07T01:02:11.330902+00:00
+sqm_N1,fake_kyiv,1,sqm,"{'q_work': [42], 'mem_orig_0': [41], 'tele_ancilla_0': [53], 'mem_backup_0': [60]}","[(42, 41), (41, 53), (53, 60)]",0.00515239,0.00555420,300.96,338.14,2026-10-07T01:02:11.330902+00:00
+teleport_N1,fake_kyiv,1,teleport,"{'q_work': [42], 'mem_orig_0': [41], 'tele_ancilla_0': [53], 'mem_backup_0': [60]}","[(42, 41), (41, 53), (53, 60)]",0.00515239,0.00555420,300.96,338.14,2026-10-07T01:02:11.330902+00:00
+delay_N1,fake_kyiv,1,delay,{'delay_qubits': [103]},[],0.00000000,0.00170898,265.23,188.98,2026-10-07T01:02:11.330902+00:00

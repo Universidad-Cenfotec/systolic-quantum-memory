@@ -27,7 +27,7 @@ def test_folding_preserves_dynamic_operations():
     folded = ZNEFolder().fold_circuit(circuit, 3)
     names = [instruction.operation.name for instruction in folded.data]
 
-    assert names.count("h") == 3
+    assert names.count("h") == 1
     assert names.count("cx") == 3
     for name in ("measure", "reset", "delay", "if_else"):
         assert names.count(name) == original.count(name)
@@ -55,7 +55,7 @@ def test_folding_factor_five():
     folded = ZNEFolder().fold_circuit(circuit, 5)
     names = [instruction.operation.name for instruction in folded.data]
     
-    assert names.count("h") == 5
+    assert names.count("h") == 1
     assert names.count("cx") == 5
 
 def test_folding_ignores_inner_blocks():

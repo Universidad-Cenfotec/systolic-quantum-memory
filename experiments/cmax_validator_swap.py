@@ -564,12 +564,12 @@ if __name__ == "__main__":
     # =========================================================================
     # BACKEND MODE: "default" = FakeKyiv simulator | "IBM" = real IBM hardware
     # =========================================================================
-    backend_mode = "default"  # Change to "IBM" to run on real IBM hardware
-    twirling = True           # Set to True to enable Pauli twirling
+    backend_mode = "IBM"  # Change to "IBM" to run on real IBM hardware
+    twirling = False           # Set to True to enable Pauli twirling
     twirling_variants = 10    # Number of random circuits per RB point
         # Mitigation toggles
-    use_zne = True
-    use_rem = True
+    use_zne = False
+    use_rem = False
     mitigation_config = {
         "zne": {"enabled": use_zne, "noise_factors": [1, 3,5], "extrapolator": "exponential"},
         "rem": {"enabled": use_rem}
@@ -587,14 +587,12 @@ if __name__ == "__main__":
     #              fidelity measured vs |1⟩
     # =========================================================================
     initial_state = 1  # 0 = |0⟩, 1 = |1⟩, 2 = |+⟩ (H), 3 = |-⟩ (XH)
-    shots = 1024
+    shots = 1024 
     # 1. DEFINE THE ARCHITECTURE (N = Word width)
     N_qubits = 1
-    m_list = [0, 1, 2, 4, 6, 8, 10, 15, 20, 25, 30, 40,50, 60, 80, 100]
+    m_list = [0, 1, 2, 4, 6, 8, 10, 15, 20, 25, 30, 40, 50, 60, 80, 100]
     #m_list = [0, 1, 2, 3, 4] 
-
-
-
+  
     _state_labels = {0: "|0⟩", 1: "|1⟩", 2: "|+⟩ (H)", 3: "|-⟩ (XH)"}
     state_label = _state_labels.get(initial_state, f"unknown({initial_state})")
     print(f"[Main] Running with initial_state={initial_state} ({state_label})")

@@ -642,8 +642,8 @@ if __name__ == "__main__":
     # =========================================================================
     # BACKEND MODE: "default" = FakeKyiv simulator | "IBM" = real IBM hardware
     # =========================================================================
-    backend_mode = "default"  # Change to "IBM" to run on real IBM hardware
-    shots = 1024
+    backend_mode = "IBM"  # Change to "IBM" to run on real IBM hardware
+    shots = 4000
     twirling = False           # Set to True to enable Pauli twirling
     twirling_variants = 10    # Number of random circuits per delay point
  
@@ -665,18 +665,17 @@ if __name__ == "__main__":
     #   3 = |->  : qubit starts in |-> (X+H gates), H applied before measure,
     #              fidelity measured vs |1>
     # =========================================================================
-    initial_state = 3  # 0 = |0>, 1 = |1>, 2 = |+> (H), 3 = |-> (XH)
+    initial_state = 2  # 0 = |0>, 1 = |1>, 2 = |+> (H), 3 = |-> (XH)
 
     # 1. DEFINE THE ARCHITECTURE (N = Word width)
     N_qubits = 1
     target_fidelity = 0.75
-
+ 
     # -- Phase 1: Delay characterization (curve_fit) ---------------------------
-    #    Define delay times directly in nanoseconds.
-    delay_list_ns = [
-       0, 1_000, 2_000, 5_000, 10_000, 20_000, 40_000, 50_000,100_000, 
-       150_000, 200_000, 300_000, 600_000,800_000]
-    #delay_list_ns = [80_0000]  
+    #    Define delay units (will be multiplied by idle_time_ns to match the simulator)
+    delay_units = [0, 1, 2, 5, 10, 20, 40, 60, 80, 100, 150, 200, 250, 300, 400, 500]
+    idle_time_ns = 1000  # Matches default.yaml simulator.thermal.idle_time_ns
+    delay_list_ns = [u * idle_time_ns for u in delay_units]
  
     _state_labels = {0: "|0>", 1: "|1>", 2: "|+> (H)", 3: "|-> (XH)"}
     state_label = _state_labels.get(initial_state, f"unknown({initial_state})")

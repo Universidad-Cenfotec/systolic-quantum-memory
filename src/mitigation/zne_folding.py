@@ -19,7 +19,7 @@ UNFOLDABLE_INSTRUCTIONS = {
     "while_loop",
 }
 
-FOLDABLE_INSTRUCTIONS = {"cx", "ecr", "cz", "sx", "x", "rz", "h", "rzx"}
+FOLDABLE_INSTRUCTIONS = {"cx", "ecr", "cz", "rzx"}
 
 
 class ZNEFolder:

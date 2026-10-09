@@ -71,15 +71,28 @@ def generate_workloads_from_config(config: Dict[str, Any], workload_type: str) -
     
     if workload_type == "standard":
         workloads = []
-        count = workload_cfg['standard']['count']
-        multiplier = workload_cfg['standard'].get('multiplier', 1)
+        std_cfg = workload_cfg['standard']
+        multiplier = std_cfg.get('multiplier', 1)
         
-        for i in range(1, count + 1):
-            # Single mode: increment by multiplier for each workload
+        # Preferred: explicit list of read-pair counts (e.g. [0, 1, 2, 4, ...]).
+        # Fallback (legacy): 'count' -> values 1..count.
+        pairs_list = std_cfg.get('read_pairs')
+        if pairs_list is None:
+            pairs_list = list(range(1, std_cfg['count'] + 1))
+        
+        for i in pairs_list:
+            # Each value i defines i READ *pairs*: one READ_0 before WRITE_0 and
+            # one READ_0 after it (e.g. i=1 -> READ, WRITE, READ, READ).
             # Workload i has: READ_0 (i*multiplier times) + WRITE_0 + READ_0 (i*multiplier times) + READ_0
-            read_count = multiplier * i
-            total_instr = (multiplier * i) + 1 + (multiplier * i) + 1  # READ + WRITE + READ + READ
-            label = f"Workload {i} ({total_instr} instr)"
+            read_count = multiplier * int(i)
+            
+            # Special case: 0 pairs -> empty workload (no WRITE_0, no final READ_0)
+            if read_count == 0:
+                workloads.append((f"Pairs {i} (0 instr)", []))
+                continue
+            
+            total_instr = read_count + 1 + read_count + 1  # READ + WRITE + READ + READ
+            label = f"Pairs {i} ({total_instr} instr)"
             
             workload = (
                 ["READ_0"] * read_count +
@@ -233,7 +246,8 @@ def run_hardware_mode(config: Dict[str, Any]):
         backend = IBMHardwareBackend(
             backend_name=cfg['backend_name'],
             channel=cfg['channel'],
-            instance=cfg.get('instance')
+            instance=cfg.get('instance'),
+            idle_time_ns=cfg.get('idle_time_ns')  # null -> calibrate from readout
         )
         backend_info = backend.get_backend_info()
         

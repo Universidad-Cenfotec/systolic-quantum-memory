@@ -248,7 +248,7 @@ class CMaxValidatorTeleport:
             initial_layout[i]              = phys_a
             initial_layout[self.N + i]     = phys_b
             initial_layout[2 * self.N + i] = phys_anc
-        print(qc.draw(output='text'))
+        #print(qc.draw(output='text'))
         qc_t = transpile(qc, backend=self.backend, optimization_level=0, initial_layout=initial_layout)
 
         register_layout = MeasurementParser.build_register_layout_from_order(
@@ -653,12 +653,12 @@ if __name__ == "__main__":
     # =========================================================================
     # BACKEND MODE: "default" = FakeKyiv simulator | "IBM" = real IBM hardware
     # =========================================================================
-    backend_mode = "default"  # Change to "IBM" to run on real IBM hardware
-    twirling = True           # Set to True to enable Pauli twirling
+    backend_mode = "IBM"  # Change to "IBM" to run on real IBM hardware
+    twirling = False           # Set to True to enable Pauli twirling
     twirling_variants = 5    # Number of random circuits per teleport point
-    use_zne = True
-    use_rem = True  
-    mitigation_config = {
+    use_zne = False
+    use_rem = False  
+    mitigation_config = { 
         "zne": {"enabled": use_zne, "noise_factors": [1, 3,5], "extrapolator": "exponential"},
         "rem": {"enabled": use_rem}
     }  
@@ -674,8 +674,8 @@ if __name__ == "__main__":
     #              fidelity measured vs |1⟩
     # =========================================================================
     shots = 1024             # Number of shots per circuit 
-    initial_state = 1  # 0 = |0⟩, 1 = |1⟩, 2 = |+⟩ (H), 3 = |-⟩ (XH)
-    m_list = [0, 1, 2, 4, 6, 8, 10, 15, 20, 25, 30, 40,50, 60, 80, 100]
+    initial_state = 3  # 0 = |0⟩, 1 = |1⟩, 2 = |+⟩ (H), 3 = |-⟩ (XH)
+    m_list = [0, 1, 2, 3, 4, 5, 6, 8, 10, 12, 14, 16, 18, 20, 25, 30]
     #m_list = [2]
     # 1. DEFINE THE ARCHITECTURE (N = Word width)  
     N_qubits = 1 

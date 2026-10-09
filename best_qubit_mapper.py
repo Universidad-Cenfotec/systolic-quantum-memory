@@ -654,7 +654,7 @@ if __name__ == "__main__":
     # Panel de Control
     # ==================================================================
     N_QUBITS = 1                          # Word width N
-    BACKEND_NAME = "simulator"            # "simulator" | "ibm_kingston" | etc.
+    BACKEND_NAME = "ibm_kingston"            # "simulator" | "ibm_kingston" | etc.
     
     prefix = "sm" if BACKEND_NAME == "simulator" else "rb"
     OUTPUT_CSV = f"IBM_Configuration/{prefix}_qubit_mapping_N{N_QUBITS}.csv"

@@ -699,3 +699,6 @@ Each validator can be switched between `"default"` (FakeKyiv) and `"IBM"` (real 
 - Fixed noise model documentation across all simulators
 - Removed debug print statements and commented-out code
 - All 8+ source files reviewed and optimized
+
+### ✅ Error Mitigation (ZNE)
+- Updated `ZNEFolder` to apply *Local Gate Folding* exclusively to two-qubit entanglement gates (`cx`, `ecr`, `cz`, `rzx`). This prevents amplifying single-qubit noise and aligns with state-of-the-art ZNE practices for dynamic circuits.
